@@ -30,7 +30,7 @@ var opts = packed struct {
     blowup: bool = false,
     screenshot: bool = false,
     premult: bool = false,
-    dpi: bool = false,
+    dpi: bool = true,
 }{};
 var watch: Stopwatch = undefined;
 var elapsed: f32 = 0;
@@ -42,6 +42,8 @@ pub fn main() anyerror!void {
         _ = win32.AllocConsole();
         _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
     }
+
+    try win32.setProcessDpiAware();
 
     watch = try Stopwatch.start();
     elapsed = readWatch();
@@ -165,21 +167,23 @@ fn wndProc(
             elapsed = t;
 
             // DPI correction
-            const dpi: f32 = if (opts.dpi) 120 else 96;
-            const pixel_size = 96 / dpi;
+            const dpi = if (opts.dpi) win32.GetDpiForWindow(win) else 96;
+            const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
             // Fetch viewport and DPI information
             var viewport: win32.RECT = undefined;
             _ = win32.GetClientRect(win, &viewport);
             assert(viewport.left == 0 and viewport.top == 0);
-            const viewport_w: f32 = @floatFromInt(viewport.right);
-            const viewport_h: f32 = @floatFromInt(viewport.bottom);
+            const viewport_w = pixel_size * @as(f32, @floatFromInt(viewport.right));
+            const viewport_h = pixel_size * @as(f32, @floatFromInt(viewport.bottom));
 
             // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
             // pixel coordinates
-            var cursor: win32.POINT = undefined;
-            _ = win32.GetCursorPos(&cursor);
-            _ = win32.ScreenToClient(win, &cursor);
+            var cursor_pt: win32.POINT = undefined;
+            _ = win32.GetCursorPos(&cursor_pt);
+            _ = win32.ScreenToClient(win, &cursor_pt);
+            const cursor_x = pixel_size * @as(f32, @floatFromInt(cursor_pt.x));
+            const cursor_y = pixel_size * @as(f32, @floatFromInt(cursor_pt.y));
 
             // Update and render
             c.glViewport(0, 0, viewport.right, viewport.bottom);
@@ -190,21 +194,9 @@ fn wndProc(
             }
             c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-            vg.beginFrame(
-                viewport_w * pixel_size,
-                viewport_h * pixel_size,
-                1 / pixel_size,
-            );
+            vg.beginFrame(viewport_w, viewport_h, 1 / pixel_size);
 
-            demo.draw(
-                vg,
-                @as(f32, @floatFromInt(cursor.x)) * pixel_size,
-                @as(f32, @floatFromInt(cursor.y)) * pixel_size,
-                viewport_w * pixel_size,
-                viewport_h * pixel_size,
-                t,
-                opts.blowup,
-            );
+            demo.draw(vg, cursor_x, cursor_y, viewport_w, viewport_h, t, opts.blowup);
             fps.update(dt);
             fps.draw(vg, 5, 5);
 
