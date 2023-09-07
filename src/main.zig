@@ -1,11 +1,32 @@
+const build_opts = @import("build_options");
+
+// Std stuff
 const std = @import("std");
 const builtin = @import("builtin");
+const assert = std.debug.assert;
 
+// Windows stuff
 const win32 = @import("win32.zig");
 const wgl = @import("wgl.zig");
 const L = win32.L;
 
-const build_opts = @import("build_options");
+// Dependencies
+const nvg = @import("nanovg");
+const Demo = @import("demo");
+const PerfGraph = @import("perf");
+
+// TODO (Matteo): Replace with custom gl loader
+const c = @cImport({
+    @cInclude("glad/glad.h");
+});
+
+// Main app
+var vg: nvg = undefined;
+var demo: Demo = undefined;
+var fps = PerfGraph.init(.fps, "Frame Time");
+var blowup: bool = false;
+var screenshot: bool = false;
+var premult: bool = false;
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
@@ -15,6 +36,7 @@ pub fn main() anyerror!void {
         _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
     }
 
+    // Init window
     const win_name = L(app_name);
 
     const win_class = win32.WNDCLASSEXW{
@@ -35,8 +57,6 @@ pub fn main() anyerror!void {
 
     _ = try win32.registerClassExW(&win_class);
 
-    _ = try wgl.init();
-
     const win_flags = win32.WS_OVERLAPPEDWINDOW;
     const win = try win32.createWindowExW(
         0,
@@ -53,14 +73,34 @@ pub fn main() anyerror!void {
         null,
     );
 
+    // Init GL context
+    _ = try wgl.init();
+
     const dc = try win32.getDC(win);
     defer _ = win32.releaseDC(win, dc);
-    const ctx = try createWglContext(dc);
+    const ctx = try wgl.createContext(dc, .{ .v_major = 2 });
     _ = try wgl.makeCurrent(dc, ctx);
     try wgl.setSwapInterval(1);
-    // try gl.init();
+
+    // Init OpenGL
+    // TODO (Matteo): Replace with custom OpenGL loader
+    if (c.gladLoadGL() == 0) return error.GLADInitFailed; // try gl.init();
     // gl.enable(GL.FRAMEBUFFER_SRGB);
 
+    // Init NanoVG context
+    // TODO (Matteo): Replace with custom gl loader
+    vg = try nvg.gl.init(std.heap.page_allocator, .{
+        .antialias = true,
+        .stencil_strokes = false,
+        .debug = true,
+    });
+    defer vg.deinit();
+
+    // Init demo stuff
+    demo.load(vg);
+    defer demo.free(vg);
+
+    // Main loop
     _ = win32.showWindow(win, win32.SW_SHOWDEFAULT);
     try win32.updateWindow(win);
 
@@ -94,6 +134,46 @@ fn wndProc(
             win32.PostQuitMessage(0);
         },
         win32.WM_PAINT => {
+            // TODO (Matteo): Measure time
+            const t = 0;
+
+            // Fetch viewport information
+            var viewport: win32.RECT = undefined;
+            _ = win32.GetClientRect(win, &viewport);
+            assert(viewport.left == 0 and viewport.top == 0);
+            const viewport_w: f32 = @floatFromInt(viewport.right);
+            const viewport_h: f32 = @floatFromInt(viewport.bottom);
+
+            // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
+            // pixel coordinates
+            var cursor: win32.POINT = undefined;
+            _ = win32.GetCursorPos(&cursor);
+            _ = win32.ScreenToClient(win, &cursor);
+
+            // Update and render
+            c.glViewport(0, 0, viewport.right, viewport.bottom);
+            if (premult) {
+                c.glClearColor(0, 0, 0, 0);
+            } else {
+                c.glClearColor(0.3, 0.3, 0.32, 1.0);
+            }
+            c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+
+            vg.beginFrame(viewport_w, viewport_h, 1);
+
+            demo.draw(
+                vg,
+                @floatFromInt(cursor.x),
+                @floatFromInt(cursor.y),
+                viewport_w,
+                viewport_h,
+                @floatFromInt(t),
+                blowup,
+            );
+            fps.draw(vg, 5, 5);
+
+            vg.endFrame();
+
             // TODO: Painting code goes here
             const dc = win32.getDC(win) catch unreachable;
             defer _ = win32.releaseDC(win, dc);
@@ -103,33 +183,4 @@ fn wndProc(
     }
 
     return 0;
-}
-
-fn createWglContext(dc: win32.HDC) !win32.HGLRC {
-    // NOTE (Matteo): I didn't find a way to ask WGL for a core profile context with
-    // the highest version available, so the best I could do is trying all versions
-    // since 3.0 in decreasing order.
-    const OpenGlVersion = struct { major: c_int, minor: c_int };
-
-    const gl_versions = [_]OpenGlVersion{
-        .{ .major = 4, .minor = 6 }, // 2018 - #version 460
-        .{ .major = 4, .minor = 5 }, // 2017 - #version 450
-        .{ .major = 4, .minor = 4 }, // 2014 - #version 440
-        .{ .major = 4, .minor = 3 }, // 2013 - #version 430
-        .{ .major = 4, .minor = 2 }, // 2011 - #version 420
-        .{ .major = 4, .minor = 1 }, // 2010 - #version 410
-        .{ .major = 4, .minor = 0 }, // 2010 - #version 400
-        .{ .major = 3, .minor = 3 }, // 2010 - #version 330
-        .{ .major = 3, .minor = 2 }, // 2009 - #version 150
-        .{ .major = 3, .minor = 1 }, // 2009 - #version 140
-        .{ .major = 3, .minor = 0 }, // 2009 - #version 130
-    };
-
-    for (gl_versions) |ver| {
-        if (wgl.createContext(dc, ver.major, ver.minor)) |context| {
-            return context;
-        } else |_| {}
-    }
-
-    return error.CannotCreateContext;
 }

@@ -56,6 +56,10 @@ pub extern "user32" fn GetClientRect(
     rect_ptr: *win32.RECT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
+pub extern "user32" fn GetCursorPos(
+    out_point: *win32.POINT,
+) callconv(win32.WINAPI) win32.BOOL;
+
 pub extern "user32" fn SetTimer(
     hwnd: win32.HWND,
     event_id: isize,
@@ -66,6 +70,11 @@ pub extern "user32" fn SetTimer(
 pub extern "user32" fn KillTimer(
     hwnd: win32.HWND,
     event_id: isize,
+) callconv(win32.WINAPI) win32.BOOL;
+
+pub extern "user32" fn ScreenToClient(
+    hwnd: win32.HWND,
+    point: *win32.POINT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
 //=== Command line ===//

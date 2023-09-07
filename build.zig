@@ -17,8 +17,20 @@ pub fn build(b: *std.build.Builder) void {
     const build_options = b.addOptions();
     build_options.addOption(bool, "console", console);
 
+    const nvg_path = "deps/nanovg";
+    const nvg = b.addModule("nanovg", .{ .source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
+
+    const demo = b.addModule("demo", .{
+        .source_file = .{ .path = nvg_path ++ "/examples/demo.zig" },
+        .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
+    });
+    const perf = b.addModule("perf", .{
+        .source_file = .{ .path = nvg_path ++ "/examples/perf.zig" },
+        .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
+    });
+
     const exe = b.addExecutable(.{
-        .name = "miniwin",
+        .name = "minivg",
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
         .root_source_file = .{ .path = "src/main.zig" },
@@ -33,7 +45,19 @@ pub fn build(b: *std.build.Builder) void {
 
     exe.subsystem = .Windows;
     exe.addOptions("build_options", build_options);
+    exe.addModule("nanovg", nvg);
+    exe.addModule("demo", demo);
+    exe.addModule("perf", perf);
     exe.linkSystemLibrary("opengl32");
+    exe.linkLibC();
+    exe.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &.{ "-DFONS_NO_STDIO", "-fno-stack-protector" } });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &.{ "-DSTBI_NO_STDIO", "-fno-stack-protector" } });
+    exe.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
+    exe.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
+    exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
+    exe.addIncludePath(.{ .path = nvg_path ++ "/lib/gl2/include" });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/lib/gl2/src/glad.c" }, .flags = &.{} });
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
