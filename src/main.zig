@@ -24,9 +24,12 @@ const c = @cImport({
 var vg: nvg = undefined;
 var demo: Demo = undefined;
 var fps = PerfGraph.init(.fps, "Frame Time");
-var blowup: bool = false;
-var screenshot: bool = false;
-var premult: bool = false;
+var pixel_size: i32 = 1;
+var opts = packed struct {
+    blowup: bool = false,
+    screenshot: bool = false,
+    premult: bool = false,
+}{};
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
@@ -124,14 +127,24 @@ fn wndProc(
     lparam: win32.LPARAM,
 ) callconv(win32.WINAPI) win32.LRESULT {
     switch (msg) {
-        win32.WM_CLOSE => {
+        win32.WM_CLOSE => destroy(win),
+        win32.WM_DESTROY => {
             if (wgl.getCurrentContext()) |context| {
                 wgl.deleteContext(context) catch unreachable;
             }
-            win32.destroyWindow(win) catch unreachable;
-        },
-        win32.WM_DESTROY => {
             win32.PostQuitMessage(0);
+        },
+        win32.WM_KEYUP => {
+            const VK_ESCAPE = 0x1B;
+            const VK_SPACE = 0x20;
+
+            switch (wparam) {
+                VK_ESCAPE => destroy(win),
+                VK_SPACE => opts.blowup = !opts.blowup,
+                'S' => opts.screenshot = true,
+                'P' => opts.premult = !opts.premult,
+                else => {},
+            }
         },
         win32.WM_PAINT => {
             // TODO (Matteo): Measure time
@@ -152,14 +165,14 @@ fn wndProc(
 
             // Update and render
             c.glViewport(0, 0, viewport.right, viewport.bottom);
-            if (premult) {
+            if (opts.premult) {
                 c.glClearColor(0, 0, 0, 0);
             } else {
                 c.glClearColor(0.3, 0.3, 0.32, 1.0);
             }
             c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-            vg.beginFrame(viewport_w, viewport_h, 1);
+            vg.beginFrame(viewport_w, viewport_h, @floatFromInt(pixel_size));
 
             demo.draw(
                 vg,
@@ -168,7 +181,7 @@ fn wndProc(
                 viewport_w,
                 viewport_h,
                 @floatFromInt(t),
-                blowup,
+                opts.blowup,
             );
             fps.draw(vg, 5, 5);
 
@@ -179,8 +192,13 @@ fn wndProc(
             defer _ = win32.releaseDC(win, dc);
             wgl.swapBuffers(dc) catch unreachable;
         },
+
         else => return win32.defWindowProcW(win, msg, wparam, lparam),
     }
 
     return 0;
+}
+
+inline fn destroy(win: win32.HWND) void {
+    win32.destroyWindow(win) catch unreachable;
 }
