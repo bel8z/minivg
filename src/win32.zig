@@ -14,8 +14,9 @@ pub const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 /// Returns the HINSTANCE corresponding to the process executable
 pub fn getCurrentInstance() win32.HINSTANCE {
-    return @ptrCast(
-        win32.kernel32.GetModuleHandleW(null) orelse unreachable,
+    return @as(
+        win32.HINSTANCE,
+        @ptrCast(win32.kernel32.GetModuleHandleW(null) orelse unreachable),
     );
 }
 
@@ -34,6 +35,37 @@ pub inline fn setWindowText(
 extern "user32" fn SetWindowTextW(
     hWnd: win32.HWND,
     lpString: win32.LPCWSTR,
+) callconv(win32.WINAPI) win32.BOOL;
+
+pub inline fn setProcessDpiAware() !void {
+    const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4;
+    const res = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    if (res != win32.TRUE) return error.Unexpected;
+}
+
+extern "user32" fn SetProcessDpiAwarenessContext(
+    value: isize,
+) callconv(win32.WINAPI) win32.BOOL;
+
+pub extern "user32" fn GetDpiForWindow(
+    hwnd: win32.HWND,
+) callconv(win32.WINAPI) c_uint;
+
+pub extern "user32" fn GetClientRect(
+    hwnd: win32.HWND,
+    rect_ptr: *win32.RECT,
+) callconv(win32.WINAPI) win32.BOOL;
+
+pub extern "user32" fn SetTimer(
+    hwnd: win32.HWND,
+    event_id: isize,
+    ms_timeout: c_uint,
+    timer_fn: ?*anyopaque,
+) callconv(win32.WINAPI) isize;
+
+pub extern "user32" fn KillTimer(
+    hwnd: win32.HWND,
+    event_id: isize,
 ) callconv(win32.WINAPI) win32.BOOL;
 
 //=== Command line ===//

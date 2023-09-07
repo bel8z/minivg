@@ -26,6 +26,9 @@ const WGL_DEPTH_BITS_ARB = 0x2022;
 const WGL_STENCIL_BITS_ARB = 0x2023;
 // See https://registry.khronos.org/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt
 const WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB = 0x20A9;
+// See https://registry.khronos.org/OpenGL/extensions/ARB/ARB_multisample.txt
+const WGL_SAMPLE_BUFFERS_ARB = 0x2041;
+const WGL_SAMPLES_ARB = 0x2042;
 
 const WGL_FULL_ACCELERATION_ARB = 0x2027;
 const WGL_TYPE_RGBA_ARB = 0x202B;
@@ -186,7 +189,7 @@ pub fn init() !void {
 }
 
 pub fn loadProc(comptime T: type, comptime name: [*:0]const u8) ?T {
-    if (wglGetProcAddress(name)) |proc| return @ptrCast(proc);
+    if (wglGetProcAddress(name)) |proc| return @as(T, @ptrCast(proc));
 
     if (win32.kernel32.GetModuleHandleW(L("opengl32"))) |gl32| {
         if (win32.loadProc(T, name, gl32)) |proc| {
@@ -197,7 +200,13 @@ pub fn loadProc(comptime T: type, comptime name: [*:0]const u8) ?T {
     return null;
 }
 
-pub fn createContext(dc: win32.HDC, v_major: c_int, v_minor: c_int) !win32.HGLRC {
+pub const ContextInfo = struct {
+    v_major: u8,
+    v_minor: u8 = 0,
+    multi_samples: u8 = 0,
+};
+
+pub fn createContext(dc: win32.HDC, info: ContextInfo) !win32.HGLRC {
     const pixel_format_attribs = [_]c_int{
         WGL_DRAW_TO_WINDOW_ARB, 1, // GL_TRUE
         WGL_SUPPORT_OPENGL_ARB, 1, // GL_TRUE
@@ -208,6 +217,8 @@ pub fn createContext(dc: win32.HDC, v_major: c_int, v_minor: c_int) !win32.HGLRC
         WGL_COLOR_BITS_ARB,               32,
         WGL_DEPTH_BITS_ARB,               24,
         WGL_STENCIL_BITS_ARB,             8,
+        WGL_SAMPLE_BUFFERS_ARB,           if (info.multi_samples > 0) 1 else 0,
+        WGL_SAMPLES_ARB,                  @as(c_int, @intCast(info.multi_samples)),
         0,
     };
 
@@ -232,14 +243,14 @@ pub fn createContext(dc: win32.HDC, v_major: c_int, v_minor: c_int) !win32.HGLRC
 
     // Specify that we want to create an OpenGL core profile context
     var context_attribs = [_]c_int{
-        WGL_CONTEXT_MAJOR_VERSION_ARB, v_major,
-        WGL_CONTEXT_MINOR_VERSION_ARB, v_minor,
+        WGL_CONTEXT_MAJOR_VERSION_ARB, @as(c_int, @intCast(info.v_major)),
+        WGL_CONTEXT_MINOR_VERSION_ARB, @as(c_int, @intCast(info.v_minor)),
         WGL_CONTEXT_FLAGS_ARB,         0,
         0,                             0,
         0,
     };
 
-    if (v_major > 2) {
+    if (info.v_major > 2) {
         context_attribs[5] = WGL_CONTEXT_DEBUG_BIT_ARB | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
         context_attribs[6] = WGL_CONTEXT_PROFILE_MASK_ARB;
         context_attribs[7] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
