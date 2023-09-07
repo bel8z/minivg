@@ -20,16 +20,20 @@ const c = @cImport({
     @cInclude("glad/glad.h");
 });
 
+const Stopwatch = std.time.Timer;
+
 // Main app
 var vg: nvg = undefined;
 var demo: Demo = undefined;
 var fps = PerfGraph.init(.fps, "Frame Time");
-var pixel_size: i32 = 1;
 var opts = packed struct {
     blowup: bool = false,
     screenshot: bool = false,
     premult: bool = false,
+    dpi: bool = false,
 }{};
+var watch: Stopwatch = undefined;
+var elapsed: f32 = 0;
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
@@ -38,6 +42,9 @@ pub fn main() anyerror!void {
         _ = win32.AllocConsole();
         _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
     }
+
+    watch = try Stopwatch.start();
+    elapsed = readWatch();
 
     // Init window
     const win_name = L(app_name);
@@ -120,6 +127,10 @@ pub fn main() anyerror!void {
     }
 }
 
+fn readWatch() f32 {
+    return @as(f32, @floatFromInt(watch.read())) / 1000_000_000.0;
+}
+
 fn wndProc(
     win: win32.HWND,
     msg: u32,
@@ -143,14 +154,21 @@ fn wndProc(
                 VK_SPACE => opts.blowup = !opts.blowup,
                 'S' => opts.screenshot = true,
                 'P' => opts.premult = !opts.premult,
+                'D' => opts.dpi = !opts.dpi,
                 else => {},
             }
         },
         win32.WM_PAINT => {
             // TODO (Matteo): Measure time
-            const t = 0;
+            const t = readWatch();
+            const dt = t - elapsed;
+            elapsed = t;
 
-            // Fetch viewport information
+            // DPI correction
+            const dpi: f32 = if (opts.dpi) 120 else 96;
+            const pixel_size = 96 / dpi;
+
+            // Fetch viewport and DPI information
             var viewport: win32.RECT = undefined;
             _ = win32.GetClientRect(win, &viewport);
             assert(viewport.left == 0 and viewport.top == 0);
@@ -172,17 +190,22 @@ fn wndProc(
             }
             c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-            vg.beginFrame(viewport_w, viewport_h, @floatFromInt(pixel_size));
+            vg.beginFrame(
+                viewport_w * pixel_size,
+                viewport_h * pixel_size,
+                1 / pixel_size,
+            );
 
             demo.draw(
                 vg,
-                @floatFromInt(cursor.x),
-                @floatFromInt(cursor.y),
-                viewport_w,
-                viewport_h,
-                @floatFromInt(t),
+                @as(f32, @floatFromInt(cursor.x)) * pixel_size,
+                @as(f32, @floatFromInt(cursor.y)) * pixel_size,
+                viewport_w * pixel_size,
+                viewport_h * pixel_size,
+                t,
                 opts.blowup,
             );
+            fps.update(dt);
             fps.draw(vg, 5, 5);
 
             vg.endFrame();
