@@ -186,7 +186,7 @@ pub fn init() !void {
 }
 
 pub fn loadProc(comptime T: type, comptime name: [*:0]const u8) ?T {
-    if (wglGetProcAddress(name)) |proc| return @ptrCast(T, proc);
+    if (wglGetProcAddress(name)) |proc| return @ptrCast(proc);
 
     if (win32.kernel32.GetModuleHandleW(L("opengl32"))) |gl32| {
         if (win32.loadProc(T, name, gl32)) |proc| {

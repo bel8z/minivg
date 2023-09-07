@@ -7,13 +7,8 @@ const L = win32.L;
 
 const build_opts = @import("build_options");
 
-const GL = if (build_opts.opengl) @import("gl.zig") else void;
-
-// TODO (Matteo): Make it local to main (pass to WndProc via window pointer)?
-var gl: GL = undefined;
-
 pub fn main() anyerror!void {
-    const app_name = "MiniWin" ++ if (build_opts.opengl) "GL" else "";
+    const app_name = "MiniVG";
 
     if (build_opts.console) {
         _ = win32.AllocConsole();
@@ -40,12 +35,7 @@ pub fn main() anyerror!void {
 
     _ = try win32.registerClassExW(&win_class);
 
-    if (build_opts.opengl) {
-        _ = try wgl.init();
-    } else {
-        try win32.BufferedPaint.init();
-        defer win32.BufferedPaint.deinit();
-    }
+    _ = try wgl.init();
 
     const win_flags = win32.WS_OVERLAPPEDWINDOW;
     const win = try win32.createWindowExW(
@@ -63,15 +53,13 @@ pub fn main() anyerror!void {
         null,
     );
 
-    if (build_opts.opengl) {
-        const dc = try win32.getDC(win);
-        defer _ = win32.releaseDC(win, dc);
-        const ctx = try createWglContext(dc);
-        _ = try wgl.makeCurrent(dc, ctx);
-        try wgl.setSwapInterval(1);
-        try gl.init();
-        gl.enable(GL.FRAMEBUFFER_SRGB);
-    }
+    const dc = try win32.getDC(win);
+    defer _ = win32.releaseDC(win, dc);
+    const ctx = try createWglContext(dc);
+    _ = try wgl.makeCurrent(dc, ctx);
+    try wgl.setSwapInterval(1);
+    // try gl.init();
+    // gl.enable(GL.FRAMEBUFFER_SRGB);
 
     _ = win32.showWindow(win, win32.SW_SHOWDEFAULT);
     try win32.updateWindow(win);
@@ -97,10 +85,8 @@ fn wndProc(
 ) callconv(win32.WINAPI) win32.LRESULT {
     switch (msg) {
         win32.WM_CLOSE => {
-            if (build_opts.opengl) {
-                if (wgl.getCurrentContext()) |context| {
-                    wgl.deleteContext(context) catch unreachable;
-                }
+            if (wgl.getCurrentContext()) |context| {
+                wgl.deleteContext(context) catch unreachable;
             }
             win32.destroyWindow(win) catch unreachable;
         },
@@ -108,21 +94,10 @@ fn wndProc(
             win32.PostQuitMessage(0);
         },
         win32.WM_PAINT => {
-            if (build_opts.opengl) {
-                gl.clearColor(0.5, 0, 0.5, 1);
-                gl.clear(GL.COLOR_BUFFER_BIT);
-
-                // TODO: Painting code goes here
-
-                const dc = win32.getDC(win) catch unreachable;
-                defer _ = win32.releaseDC(win, dc);
-                wgl.swapBuffers(dc) catch unreachable;
-            } else if (win32.BufferedPaint.begin(win)) |pb| {
-                defer pb.end() catch unreachable;
-
-                // TODO: Painting code goes here
-                pb.clear(.All) catch unreachable;
-            } else |_| unreachable;
+            // TODO: Painting code goes here
+            const dc = win32.getDC(win) catch unreachable;
+            defer _ = win32.releaseDC(win, dc);
+            wgl.swapBuffers(dc) catch unreachable;
         },
         else => return win32.defWindowProcW(win, msg, wparam, lparam),
     }

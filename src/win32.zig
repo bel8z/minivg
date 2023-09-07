@@ -15,14 +15,13 @@ pub const L = std.unicode.utf8ToUtf16LeStringLiteral;
 /// Returns the HINSTANCE corresponding to the process executable
 pub fn getCurrentInstance() win32.HINSTANCE {
     return @ptrCast(
-        win32.HINSTANCE,
         win32.kernel32.GetModuleHandleW(null) orelse unreachable,
     );
 }
 
 pub inline fn loadProc(comptime T: type, comptime name: [*:0]const u8, handle: win32.HMODULE) Error!T {
-    return @ptrCast(T, win32.kernel32.GetProcAddress(handle, name) orelse
-        return error.Unexpected);
+    return @as(T, @ptrCast(win32.kernel32.GetProcAddress(handle, name) orelse
+        return error.Unexpected));
 }
 
 pub inline fn setWindowText(
@@ -43,11 +42,11 @@ pub fn getArgs() []win32.LPWSTR {
     const cmd_line = win32.kernel32.GetCommandLineW();
     var argc: c_int = undefined;
     const argv = CommandLineToArgvW(cmd_line, &argc);
-    return argv[0..@intCast(usize, argc)];
+    return argv[0..@as(usize, @intCast(argc))];
 }
 
 pub fn freeArgs(args: []win32.LPWSTR) void {
-    win32.LocalFree(@ptrCast(win32.HLOCAL, args.ptr));
+    win32.LocalFree(@as(win32.HLOCAL, @ptrCast(args.ptr)));
 }
 
 extern "shell32" fn CommandLineToArgvW(
@@ -64,10 +63,10 @@ pub inline fn compareStringOrdinal(
 ) Error!std.math.Order {
     const cmp = CompareStringOrdinal(
         string1.ptr,
-        @intCast(c_int, string1.len),
+        @as(c_int, @intCast(string1.len)),
         string2.ptr,
-        @intCast(c_int, string2.len),
-        @boolToInt(ignore_case),
+        @as(c_int, @intCast(string2.len)),
+        @intFromBool(ignore_case),
     );
 
     return switch (cmp) {
@@ -150,7 +149,7 @@ pub fn getDefaultCursor() win32.HCURSOR {
 }
 
 pub fn getStandardCursor(id: CursorId) Error!win32.HCURSOR {
-    const name = @intToPtr(win32.LPCWSTR, @enumToInt(id));
+    const name = @as(win32.LPCWSTR, @ptrFromInt(@intFromEnum(id)));
     return LoadCursorW(null, name) orelse error.Unexpected;
 }
 
@@ -186,8 +185,8 @@ pub fn createMenu() Error!win32.HMENU {
 
 pub fn appendMenu(menu: win32.HMENU, item: MenuItem, flags: u32) Error!void {
     const res = switch (item) {
-        .String => |x| AppendMenuW(menu, flags, menuIdToPtr(x.id), @ptrCast(*const anyopaque, x.str)),
-        .Popup => |x| AppendMenuW(menu, flags, @ptrCast(*anyopaque, x.sub_menu), @ptrCast(*const anyopaque, x.name)),
+        .String => |x| AppendMenuW(menu, flags, menuIdToPtr(x.id), @as(*const anyopaque, @ptrCast(x.str))),
+        .Popup => |x| AppendMenuW(menu, flags, @as(*anyopaque, @ptrCast(x.sub_menu)), @as(*const anyopaque, @ptrCast(x.name))),
         .Bitmap => |x| AppendMenuW(menu, flags, menuIdToPtr(x.id), x.handle),
         .OwnerDraw => |x| AppendMenuW(menu, flags, menuIdToPtr(x.id), x.data),
     };
@@ -196,7 +195,7 @@ pub fn appendMenu(menu: win32.HMENU, item: MenuItem, flags: u32) Error!void {
 }
 
 inline fn menuIdToPtr(id: u32) *const anyopaque {
-    return @intToPtr(*const anyopaque, id);
+    return @as(*const anyopaque, @ptrFromInt(id));
 }
 
 extern "user32" fn CreateMenu() callconv(win32.WINAPI) ?win32.HMENU;
@@ -240,7 +239,7 @@ pub const BufferedPaint = struct {
     pub inline fn init() Error!void {
         const hr = BufferedPaintInit();
         if (hr != 0) {
-            SetLastError(@intCast(u32, hr));
+            SetLastError(@as(u32, @intCast(hr)));
             return error.Unexpected;
         }
     }
@@ -249,7 +248,7 @@ pub const BufferedPaint = struct {
     pub inline fn deinit() void {
         const hr = BufferedPaintUnInit();
         if (hr != 0) {
-            SetLastError(@intCast(u32, hr));
+            SetLastError(@as(u32, @intCast(hr)));
             unreachable;
         }
     }
@@ -276,7 +275,7 @@ pub const BufferedPaint = struct {
     pub inline fn end(pb: BufferedPaint) Error!void {
         const hr = EndBufferedPaint(pb.pb, win32.TRUE);
         if (hr != 0) {
-            SetLastError(@intCast(u32, hr));
+            SetLastError(@as(u32, @intCast(hr)));
             return error.Unexpected;
         }
 
@@ -294,7 +293,7 @@ pub const BufferedPaint = struct {
 
         const hr = BufferedPaintClear(self.pb, rect_ptr);
         if (hr != 0) {
-            SetLastError(@intCast(u32, hr));
+            SetLastError(@as(u32, @intCast(hr)));
             return error.Unexpected;
         }
     }
@@ -470,7 +469,7 @@ pub const IStream = extern struct {
 pub fn createMemStream(mem: []const u8) !*IStream {
     return SHCreateMemStream(
         mem.ptr,
-        @intCast(win32.UINT, mem.len),
+        @as(win32.UINT, @intCast(mem.len)),
     ) orelse error.Unexpected;
 }
 

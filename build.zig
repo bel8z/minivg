@@ -13,10 +13,8 @@ pub fn build(b: *std.build.Builder) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Build options
-    const opengl = b.option(bool, "opengl", "Example uses OpenGL") orelse false;
     const console = b.option(bool, "console", "Enable debug console") orelse (optimize == .Debug);
     const build_options = b.addOptions();
-    build_options.addOption(bool, "opengl", opengl);
     build_options.addOption(bool, "console", console);
 
     const exe = b.addExecutable(.{
@@ -31,16 +29,16 @@ pub fn build(b: *std.build.Builder) void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
-    exe.install();
+    b.installArtifact(exe);
 
     exe.subsystem = .Windows;
     exe.addOptions("build_options", build_options);
-    if (opengl) exe.linkSystemLibrary("opengl32");
+    exe.linkSystemLibrary("opengl32");
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
