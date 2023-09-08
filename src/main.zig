@@ -4,7 +4,6 @@ const build_opts = @import("build_options");
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
-const math = std.math;
 
 // Windows stuff
 const win32 = @import("win32.zig");
@@ -21,6 +20,17 @@ const c = @cImport({
     @cDefine("STBI_WRITE_NO_STDIO", "1");
     @cInclude("stb_image_write.h");
 });
+
+const math = @import("math.zig");
+const Vec2 = math.Vec2(f32);
+const Rect = math.AlignedBox(f32);
+
+inline fn rect(x: f32, y: f32, w: f32, h: f32) Rect {
+    return .{
+        .origin = .{ .x = x, .y = y },
+        .size = .{ .x = w, .y = h },
+    };
+}
 
 const Stopwatch = std.time.Timer;
 
@@ -175,23 +185,27 @@ fn wndProc(
             const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
             // Fetch viewport and DPI information
-            var viewport: win32.RECT = undefined;
-            _ = win32.GetClientRect(win, &viewport);
-            assert(viewport.left == 0 and viewport.top == 0);
-            if (viewport.right == 0 or viewport.bottom == 0) return 0;
-            const viewport_w = pixel_size * @as(f32, @floatFromInt(viewport.right));
-            const viewport_h = pixel_size * @as(f32, @floatFromInt(viewport.bottom));
+            var viewport_rect: win32.RECT = undefined;
+            _ = win32.GetClientRect(win, &viewport_rect);
+            assert(viewport_rect.left == 0 and viewport_rect.top == 0);
+            if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return 0;
+            const viewport = Vec2{
+                .x = pixel_size * @as(f32, @floatFromInt(viewport_rect.right)),
+                .y = pixel_size * @as(f32, @floatFromInt(viewport_rect.bottom)),
+            };
 
             // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
             // pixel coordinates
             var cursor_pt: win32.POINT = undefined;
             _ = win32.GetCursorPos(&cursor_pt);
             _ = win32.ScreenToClient(win, &cursor_pt);
-            const cursor_x = pixel_size * @as(f32, @floatFromInt(cursor_pt.x));
-            const cursor_y = pixel_size * @as(f32, @floatFromInt(cursor_pt.y));
+            const cursor = Vec2{
+                .x = pixel_size * @as(f32, @floatFromInt(cursor_pt.x)),
+                .y = pixel_size * @as(f32, @floatFromInt(cursor_pt.y)),
+            };
 
             // Update and render
-            c.glViewport(0, 0, viewport.right, viewport.bottom);
+            c.glViewport(0, 0, viewport_rect.right, viewport_rect.bottom);
             if (opts.premult) {
                 c.glClearColor(0, 0, 0, 0);
             } else {
@@ -199,9 +213,9 @@ fn wndProc(
             }
             c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-            vg.beginFrame(viewport_w, viewport_h, 1 / pixel_size);
+            vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
 
-            demo.draw(cursor_x, cursor_y, viewport_w, viewport_h, t, opts.blowup);
+            demo.draw(cursor, viewport, t, opts.blowup);
             fps.update(dt);
             fps.draw(vg, 5, 5);
 
@@ -266,7 +280,7 @@ const Demo = struct {
         @embedFile("assets/image12.jpg"),
     };
 
-    pub fn load(self: *Demo) void {
+    fn load(self: *Demo) void {
         for (&self.images, 0..) |*image, i| {
             image.* = vg.createImageMem(image_files[i], .{});
         }
@@ -283,21 +297,21 @@ const Demo = struct {
         _ = vg.addFallbackFontId(self.fontBold, self.fontEmoji);
     }
 
-    pub fn free(self: Demo) void {
+    fn free(self: Demo) void {
         for (self.images) |image| {
             vg.deleteImage(image);
         }
     }
 
-    pub fn draw(self: Demo, mx: f32, my: f32, width: f32, height: f32, t: f32, blowup: bool) void {
+    fn draw(self: Demo, m: Vec2, viewport: Vec2, t: f32, blowup: bool) void {
         if (opts.animations) {
-            drawEyes(width - 250, 50, 150, 100, mx, my, t);
-            drawParagraph(width - 450, 50, 150, 100, mx, my);
-            drawGraph(0, height / 2, width, height / 2, t);
-            drawColorwheel(width - 300, height - 300, 250, 250, t);
+            drawEyes(viewport.x - 250, 50, 150, 100, m.x, m.y, t);
+            drawParagraph(viewport.x - 450, 50, 150, 100, m.x, m.y);
+            drawGraph(0, viewport.y / 2, viewport.x, viewport.y / 2, t);
+            drawColorwheel(viewport.x - 300, viewport.y - 300, 250, 250, t);
 
             // Line joints
-            drawLines(120, height - 50, 600, 50, t);
+            drawLines(120, viewport.y - 50, 600, 50, t);
 
             // Line widths
             drawWidths(10, 50, 30);
@@ -305,7 +319,7 @@ const Demo = struct {
             // Line caps
             drawCaps(10, 300, 30);
 
-            drawScissor(50, height - 80, t);
+            drawScissor(50, viewport.y - 80, t);
         }
 
         vg.save();
@@ -332,18 +346,18 @@ const Demo = struct {
         drawEditBox("Password", x, y, 280, 28);
         y += 38;
         drawCheckBox("Remember me", x, y, 140, 28);
-        drawButton(ICON_LOGIN, "Sign in", x + 138, y, 140, 28, nvg.rgba(0, 96, 128, 255), mx, my);
+        drawButton(ICON_LOGIN, "Sign in", rect(x + 138, y, 140, 28), nvg.rgba(0, 96, 128, 255), m);
         y += 45;
 
         // Slider
         drawLabel("Diameter", x, y, 280, 20);
         y += 25;
         drawEditBoxNum("123.00", "px", x + 180, y, 100, 28);
-        drawSlider(0.4, x, y, 170, 28);
+        drawSlider(0.4, rect(x, y, 170, 28));
         y += 55;
 
-        drawButton(ICON_TRASH, "Delete", x, y, 160, 28, nvg.rgba(128, 16, 8, 255), mx, my);
-        drawButton(0, "Cancel", x + 170, y, 110, 28, nvg.rgba(0, 0, 0, 0), mx, my);
+        drawButton(ICON_TRASH, "Delete", rect(x, y, 160, 28), nvg.rgba(128, 16, 8, 255), m);
+        drawButton(0, "Cancel", rect(x + 170, y, 110, 28), nvg.rgba(0, 0, 0, 0), m);
 
         // Thumbnails box
         drawThumbnails(365, popy - 30, 160, 300, self.images[0..], t);
@@ -536,43 +550,35 @@ const Demo = struct {
         _ = vg.text(x + 9 + 2, y + h * 0.5, cpToUTF8(ICON_CHECK, &icon));
     }
 
-    fn isInside(
-        rx: f32,
-        ry: f32,
-        rw: f32,
-        rh: f32,
-        px: f32,
-        py: f32,
-    ) bool {
-        if (px < rx) return false;
-        if (py < ry) return false;
-        if (px > rx + rw) return false;
-        if (py > ry + rh) return false;
-        return true;
-    }
-
     fn drawButton(
         preicon: u21,
         text: [:0]const u8,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
+        bounds: Rect,
         col: nvg.Color,
-        mx: f32,
-        my: f32,
+        m: Vec2,
     ) void {
         var icon: [8]u8 = undefined;
         const cornerRadius = 4.0;
         var iw: f32 = 0;
+        var r: Rect = undefined;
 
+        const h = bounds.size.y;
+        const cen = bounds.center();
         const black = isBlack(col);
         const alpha: u8 = if (black) 16 else 32;
-        const bg = vg.linearGradient(x, y, x, y + h, nvg.rgba(255, 255, 255, alpha), nvg.rgba(0, 0, 0, alpha));
+        const bg = vg.linearGradient(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.origin.x,
+            bounds.origin.y + h,
+            nvg.rgba(255, 255, 255, alpha),
+            nvg.rgba(0, 0, 0, alpha),
+        );
+        r = bounds.offset(-2);
         vg.beginPath();
-        vg.roundedRect(x + 1, y + 1, w - 2, h - 2, cornerRadius - 1.0);
+        vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 1.0);
         if (!black) {
-            if (isInside(x, y, w, h, mx, my)) {
+            if (r.contains(m)) {
                 var light = col;
                 light.r = math.clamp(light.r * 1.2, 0, 1);
                 light.g = math.clamp(light.g * 1.2, 0, 1);
@@ -586,8 +592,9 @@ const Demo = struct {
         vg.fillPaint(bg);
         vg.fill();
 
+        r = bounds.offset(-1);
         vg.beginPath();
-        vg.roundedRect(x + 0.5, y + 0.5, w - 1, h - 1, cornerRadius - 0.5);
+        vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 0.5);
         vg.strokeColor(nvg.rgba(0, 0, 0, 48));
         vg.stroke();
 
@@ -606,52 +613,78 @@ const Demo = struct {
             vg.fontFace("icons");
             vg.fillColor(nvg.rgba(255, 255, 255, 96));
             vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-            _ = vg.text(x + w * 0.5 - tw * 0.5 - iw * 0.75, y + h * 0.5, cpToUTF8(preicon, &icon));
+            _ = vg.text(cen.x - tw * 0.5 - iw * 0.75, cen.y, cpToUTF8(preicon, &icon));
         }
 
         vg.fontSize(17.0);
         vg.fontFace("sans-bold");
         vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
         vg.fillColor(nvg.rgba(0, 0, 0, 160));
-        _ = vg.text(x + w * 0.5 - tw * 0.5 + iw * 0.25, y + h * 0.5 - 1, text);
+        _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y - 1, text);
         vg.fillColor(nvg.rgba(255, 255, 255, 160));
-        _ = vg.text(x + w * 0.5 - tw * 0.5 + iw * 0.25, y + h * 0.5, text);
+        _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y, text);
     }
 
-    fn drawSlider(pos: f32, x: f32, y: f32, w: f32, h: f32) void {
-        const cy = y + @round(h * 0.5);
+    fn drawSlider(pos: f32, bounds: Rect) void {
+        const w = bounds.size.x;
+        const h = bounds.size.y;
+        const cx = bounds.origin.x + @round(pos * w);
+        const cy = bounds.origin.y + @round(h * 0.5);
         const kr = @round(h * 0.25);
 
         vg.save();
         vg.restore();
 
         // Slot
-        var bg = vg.boxGradient(x, cy - 2 + 1, w, 4, 2, 2, nvg.rgba(0, 0, 0, 32), nvg.rgba(0, 0, 0, 128));
+        var bg = vg.boxGradient(
+            bounds.origin.x,
+            cy - 2 + 1,
+            w,
+            4,
+            2,
+            2,
+            nvg.rgba(0, 0, 0, 32),
+            nvg.rgba(0, 0, 0, 128),
+        );
         vg.beginPath();
-        vg.roundedRect(x, cy - 2, w, 4, 2);
+        vg.roundedRect(bounds.origin.x, cy - 2, w, 4, 2);
         vg.fillPaint(bg);
         vg.fill();
 
         // Knob Shadow
-        bg = vg.radialGradient(x + @round(pos * w), cy + 1, kr - 3, kr + 3, nvg.rgba(0, 0, 0, 64), nvg.rgba(0, 0, 0, 0));
+        bg = vg.radialGradient(
+            cx,
+            cy + 1,
+            kr - 3,
+            kr + 3,
+            nvg.rgba(0, 0, 0, 64),
+            nvg.rgba(0, 0, 0, 0),
+        );
         vg.beginPath();
-        vg.rect(x + @round(pos * w) - kr - 5, cy - kr - 5, kr * 2 + 5 + 5, kr * 2 + 5 + 5 + 3);
-        vg.circle(x + @round(pos * w), cy, kr);
+        vg.rect(cx - kr - 5, cy - kr - 5, kr * 2 + 5 + 5, kr * 2 + 5 + 5 + 3);
+        vg.circle(cx, cy, kr);
         vg.pathWinding(nvg.Winding.solidity(.hole));
         vg.fillPaint(bg);
         vg.fill();
 
         // Knob
-        const knob = vg.linearGradient(x, cy - kr, x, cy + kr, nvg.rgba(255, 255, 255, 16), nvg.rgba(0, 0, 0, 16));
+        const knob = vg.linearGradient(
+            bounds.origin.x,
+            cy - kr,
+            bounds.origin.x,
+            cy + kr,
+            nvg.rgba(255, 255, 255, 16),
+            nvg.rgba(0, 0, 0, 16),
+        );
         vg.beginPath();
-        vg.circle(x + @round(pos * w), cy, kr - 1);
+        vg.circle(cx, cy, kr - 1);
         vg.fillColor(nvg.rgba(40, 43, 48, 255));
         vg.fill();
         vg.fillPaint(knob);
         vg.fill();
 
         vg.beginPath();
-        vg.circle(x + @round(pos * w), cy, kr - 0.5);
+        vg.circle(cx, cy, kr - 0.5);
         vg.strokeColor(nvg.rgba(0, 0, 0, 92));
         vg.stroke();
     }
@@ -666,14 +699,28 @@ const Demo = struct {
         const br = (if (ex < ey) ex else ey) * 0.5;
         const blink = 1 - math.pow(f32, @sin(t * 0.5), 200) * 0.8;
 
-        var bg = vg.linearGradient(x, y + h * 0.5, x + w * 0.1, y + h, nvg.rgba(0, 0, 0, 32), nvg.rgba(0, 0, 0, 16));
+        var bg = vg.linearGradient(
+            x,
+            y + h * 0.5,
+            x + w * 0.1,
+            y + h,
+            nvg.rgba(0, 0, 0, 32),
+            nvg.rgba(0, 0, 0, 16),
+        );
         vg.beginPath();
         vg.ellipse(lx + 3.0, ly + 16.0, ex, ey);
         vg.ellipse(rx + 3.0, ry + 16.0, ex, ey);
         vg.fillPaint(bg);
         vg.fill();
 
-        bg = vg.linearGradient(x, y + h * 0.25, x + w * 0.1, y + h, nvg.rgba(220, 220, 220, 255), nvg.rgba(128, 128, 128, 255));
+        bg = vg.linearGradient(
+            x,
+            y + h * 0.25,
+            x + w * 0.1,
+            y + h,
+            nvg.rgba(220, 220, 220, 255),
+            nvg.rgba(128, 128, 128, 255),
+        );
         vg.beginPath();
         vg.ellipse(lx, ly, ex, ey);
         vg.ellipse(rx, ry, ex, ey);
@@ -1307,7 +1354,7 @@ const Demo = struct {
         buffer.appendSlice(slice) catch return;
     }
 
-    pub fn saveScreenshot(allocator: Allocator, w: i32, h: i32, premult: bool) ![]const u8 {
+    fn saveScreenshot(allocator: Allocator, w: i32, h: i32, premult: bool) ![]const u8 {
         const uw: usize = @intCast(w);
         const uh: usize = @intCast(h);
         const stride = uw * 4;
