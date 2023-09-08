@@ -19,11 +19,6 @@ pub fn build(b: *std.build.Builder) void {
 
     const nvg_path = "deps/nanovg";
     const nvg = b.addModule("nanovg", .{ .source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
-
-    const demo = b.addModule("demo", .{
-        .source_file = .{ .path = nvg_path ++ "/examples/demo.zig" },
-        .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
-    });
     const perf = b.addModule("perf", .{
         .source_file = .{ .path = nvg_path ++ "/examples/perf.zig" },
         .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
@@ -46,7 +41,6 @@ pub fn build(b: *std.build.Builder) void {
     exe.subsystem = .Windows;
     exe.addOptions("build_options", build_options);
     exe.addModule("nanovg", nvg);
-    exe.addModule("demo", demo);
     exe.addModule("perf", perf);
     exe.linkSystemLibrary("opengl32");
     exe.linkLibC();
@@ -58,6 +52,8 @@ pub fn build(b: *std.build.Builder) void {
     exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
     exe.addIncludePath(.{ .path = nvg_path ++ "/lib/gl2/include" });
     exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/lib/gl2/src/glad.c" }, .flags = &.{} });
+    exe.addIncludePath(.{ .path = nvg_path ++ "/examples" });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/examples/stb_image_write.c" }, .flags = &.{ "-DSTBI_NO_STDIO", "-fno-stack-protector" } });
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
