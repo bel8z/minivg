@@ -33,6 +33,7 @@ var opts = packed struct {
     screenshot: bool = false,
     premult: bool = false,
     dpi: bool = true,
+    animations: bool = false,
 }{};
 var watch: Stopwatch = undefined;
 var elapsed: f32 = 0;
@@ -159,6 +160,7 @@ fn wndProc(
                 'S' => opts.screenshot = true,
                 'P' => opts.premult = !opts.premult,
                 'D' => opts.dpi = !opts.dpi,
+                'A' => opts.animations = !opts.animations,
                 else => {},
             }
         },
@@ -176,6 +178,7 @@ fn wndProc(
             var viewport: win32.RECT = undefined;
             _ = win32.GetClientRect(win, &viewport);
             assert(viewport.left == 0 and viewport.top == 0);
+            if (viewport.right == 0 or viewport.bottom == 0) return 0;
             const viewport_w = pixel_size * @as(f32, @floatFromInt(viewport.right));
             const viewport_h = pixel_size * @as(f32, @floatFromInt(viewport.bottom));
 
@@ -238,10 +241,10 @@ const Demo = struct {
     const ICON_LOGIN = 0xE740;
     const ICON_TRASH = 0xE729;
 
-    fn cpToUTF8(cp: u21, buf: []u8) [:0]const u8 {
-        const len = std.unicode.utf8Encode(cp, buf) catch unreachable;
+    fn cpToUTF8(cp: u21, buf: *[8]u8) []const u8 {
+        const len = std.unicode.utf8Encode(cp, buf[0..]) catch unreachable;
         buf[len] = 0;
-        return @ptrCast(buf[0..len]);
+        return buf[0..len];
     }
 
     fn isBlack(col: nvg.Color) bool {
@@ -287,21 +290,23 @@ const Demo = struct {
     }
 
     pub fn draw(self: Demo, mx: f32, my: f32, width: f32, height: f32, t: f32, blowup: bool) void {
-        drawEyes(width - 250, 50, 150, 100, mx, my, t);
-        drawParagraph(width - 450, 50, 150, 100, mx, my);
-        drawGraph(0, height / 2, width, height / 2, t);
-        drawColorwheel(width - 300, height - 300, 250, 250, t);
+        if (opts.animations) {
+            drawEyes(width - 250, 50, 150, 100, mx, my, t);
+            drawParagraph(width - 450, 50, 150, 100, mx, my);
+            drawGraph(0, height / 2, width, height / 2, t);
+            drawColorwheel(width - 300, height - 300, 250, 250, t);
 
-        // Line joints
-        drawLines(120, height - 50, 600, 50, t);
+            // Line joints
+            drawLines(120, height - 50, 600, 50, t);
 
-        // Line widths
-        drawWidths(10, 50, 30);
+            // Line widths
+            drawWidths(10, 50, 30);
 
-        // Line caps
-        drawCaps(10, 300, 30);
+            // Line caps
+            drawCaps(10, 300, 30);
 
-        drawScissor(50, height - 80, t);
+            drawScissor(50, height - 80, t);
+        }
 
         vg.save();
         if (blowup) {
@@ -327,7 +332,7 @@ const Demo = struct {
         drawEditBox("Password", x, y, 280, 28);
         y += 38;
         drawCheckBox("Remember me", x, y, 140, 28);
-        drawButton(ICON_LOGIN, "Sign in", x + 138, y, 140, 28, nvg.rgba(0, 96, 128, 255));
+        drawButton(ICON_LOGIN, "Sign in", x + 138, y, 140, 28, nvg.rgba(0, 96, 128, 255), mx, my);
         y += 45;
 
         // Slider
@@ -337,8 +342,8 @@ const Demo = struct {
         drawSlider(0.4, x, y, 170, 28);
         y += 55;
 
-        drawButton(ICON_TRASH, "Delete", x, y, 160, 28, nvg.rgba(128, 16, 8, 255));
-        drawButton(0, "Cancel", x + 170, y, 110, 28, nvg.rgba(0, 0, 0, 0));
+        drawButton(ICON_TRASH, "Delete", x, y, 160, 28, nvg.rgba(128, 16, 8, 255), mx, my);
+        drawButton(0, "Cancel", x + 170, y, 110, 28, nvg.rgba(0, 0, 0, 0), mx, my);
 
         // Thumbnails box
         drawThumbnails(365, popy - 30, 160, 300, self.images[0..], t);
@@ -531,17 +536,51 @@ const Demo = struct {
         _ = vg.text(x + 9 + 2, y + h * 0.5, cpToUTF8(ICON_CHECK, &icon));
     }
 
-    fn drawButton(preicon: u21, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32, col: nvg.Color) void {
+    fn isInside(
+        rx: f32,
+        ry: f32,
+        rw: f32,
+        rh: f32,
+        px: f32,
+        py: f32,
+    ) bool {
+        if (px < rx) return false;
+        if (py < ry) return false;
+        if (px > rx + rw) return false;
+        if (py > ry + rh) return false;
+        return true;
+    }
+
+    fn drawButton(
+        preicon: u21,
+        text: [:0]const u8,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        col: nvg.Color,
+        mx: f32,
+        my: f32,
+    ) void {
         var icon: [8]u8 = undefined;
         const cornerRadius = 4.0;
         var iw: f32 = 0;
 
-        const alpha: u8 = if (isBlack(col)) 16 else 32;
+        const black = isBlack(col);
+        const alpha: u8 = if (black) 16 else 32;
         const bg = vg.linearGradient(x, y, x, y + h, nvg.rgba(255, 255, 255, alpha), nvg.rgba(0, 0, 0, alpha));
         vg.beginPath();
         vg.roundedRect(x + 1, y + 1, w - 2, h - 2, cornerRadius - 1.0);
-        if (!isBlack(col)) {
-            vg.fillColor(col);
+        if (!black) {
+            if (isInside(x, y, w, h, mx, my)) {
+                var light = col;
+                light.r = math.clamp(light.r * 1.2, 0, 1);
+                light.g = math.clamp(light.g * 1.2, 0, 1);
+                light.b = math.clamp(light.b * 1.2, 0, 1);
+                vg.fillColor(light);
+            } else {
+                vg.fillColor(col);
+            }
             vg.fill();
         }
         vg.fillPaint(bg);
