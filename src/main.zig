@@ -24,13 +24,7 @@ const c = @cImport({
 const math = @import("math.zig");
 const Vec2 = math.Vec2(f32);
 const Rect = math.AlignedBox(f32);
-
-inline fn rect(x: f32, y: f32, w: f32, h: f32) Rect {
-    return .{
-        .origin = .{ .x = x, .y = y },
-        .size = .{ .x = w, .y = h },
-    };
-}
+const rect = math.rect;
 
 const Stopwatch = std.time.Timer;
 
@@ -189,20 +183,14 @@ fn wndProc(
             _ = win32.GetClientRect(win, &viewport_rect);
             assert(viewport_rect.left == 0 and viewport_rect.top == 0);
             if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return 0;
-            const viewport = Vec2{
-                .x = pixel_size * @as(f32, @floatFromInt(viewport_rect.right)),
-                .y = pixel_size * @as(f32, @floatFromInt(viewport_rect.bottom)),
-            };
+            const viewport = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size);
 
             // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
             // pixel coordinates
             var cursor_pt: win32.POINT = undefined;
             _ = win32.GetCursorPos(&cursor_pt);
             _ = win32.ScreenToClient(win, &cursor_pt);
-            const cursor = Vec2{
-                .x = pixel_size * @as(f32, @floatFromInt(cursor_pt.x)),
-                .y = pixel_size * @as(f32, @floatFromInt(cursor_pt.y)),
-            };
+            const cursor = Vec2.fromInt(cursor_pt).mul(pixel_size);
 
             // Update and render
             c.glViewport(0, 0, viewport_rect.right, viewport_rect.bottom);

@@ -80,15 +80,6 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
         @compileError("Only structs with extern layout are currently supported");
     };
 
-    const float = switch (@typeInfo(T)) {
-        .Float => true,
-        .Int => false,
-        else => compileError("Expected scalar type, got {s}", .{@typeName(T)}),
-    };
-
-    // TODO (Matteo): make use of this for float-specific utilities
-    _ = float;
-
     inline for (fields) |field| {
         // All fields must be of the same type
         comptime assert(field.type == T);
@@ -97,11 +88,17 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
     }
 
     return struct {
+        pub usingnamespace switch (@typeInfo(T)) {
+            .Float => FloatUtil,
+            .Int => IntUtil,
+            else => compileError("Expected scalar type, got {s}", .{@typeName(T)}),
+        };
+
         pub fn init(v: anytype) Vec {
             const V = @TypeOf(v);
             const type_err = std.fmt.comptimePrint(
-                "Expected scalar, array or tuple, got {s}",
-                .{@typeName(T)},
+                "Expected scalar, array, tuple or struct of scalars, got {s}",
+                .{@typeName(V)},
             );
 
             // Default initialize
@@ -117,7 +114,19 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
                 },
                 // For sequence types, store the given number of components
                 .Array => |a| len = a.len,
-                .Struct => |s| len = if (s.is_tuple) s.fields.len else @compileError(type_err),
+                .Struct => |s| {
+                    len = if (s.is_tuple) s.fields.len else @compileError(type_err);
+                    if (s.is_tuple) {
+                        len = s.fields.len;
+                    } else {
+                        // If a struct is given, try to use the same fields
+                        comptime assert(s.fields.len >= fields.len);
+                        inline for (fields) |field| {
+                            const name = field.name;
+                            @field(r, name) = @field(v, name);
+                        }
+                    }
+                },
                 else => @compileError(type_err),
             }
 
@@ -127,6 +136,56 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
 
             return r;
         }
+
+        const FloatUtil = struct {
+            pub const is_float = true;
+
+            pub fn fromInt(v: anytype) Vec {
+                const V = @TypeOf(v);
+                const type_err = std.fmt.comptimePrint(
+                    "Expected integer, array, tuple or struct of integers, got {s}",
+                    .{@typeName(V)},
+                );
+
+                // Default initialize
+                var r = Vec{};
+                comptime var len = 0;
+                switch (@typeInfo(V)) {
+                    // If a single scalar is given, assign it to all components
+                    .Int, .ComptimeInt => {
+                        inline for (fields) |field| {
+                            const name = field.name;
+                            @field(r, name) = @floatFromInt(v);
+                        }
+                    },
+                    // For sequence types, store the given number of components
+                    .Array => |a| len = a.len,
+                    .Struct => |s| {
+                        if (s.is_tuple) {
+                            len = s.fields.len;
+                        } else {
+                            // If a struct is given, try to use the same fields
+                            comptime assert(s.fields.len >= fields.len);
+                            inline for (fields) |field| {
+                                const name = field.name;
+                                @field(r, name) = @floatFromInt(@field(v, name));
+                            }
+                        }
+                    },
+                    else => @compileError(type_err),
+                }
+
+                inline for (0..len) |i| {
+                    @field(r, fields[i].name) = @floatFromInt(v[i]);
+                }
+
+                return r;
+            }
+        };
+
+        const IntUtil = struct {
+            pub const is_float = false;
+        };
 
         pub inline fn add(a: Vec, b: anytype) Vec {
             const B = @TypeOf(b);
@@ -407,5 +466,18 @@ pub fn Ellipse(comptime T: type) type {
         center: Vec2(T) = .{},
         size: Vec2(T) = .{},
         dir: Vec2(T) = .{},
+    };
+}
+
+// TODO (Matteo): Nomenclature review?
+pub inline fn rect(
+    x: anytype,
+    y: @TypeOf(x),
+    w: @TypeOf(x),
+    h: @TypeOf(x),
+) AlignedBox(@TypeOf(x)) {
+    return .{
+        .origin = .{ .x = x, .y = y },
+        .size = .{ .x = w, .y = h },
     };
 }
