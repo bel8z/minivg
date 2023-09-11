@@ -28,6 +28,13 @@ const rect = math.rect;
 
 const Stopwatch = std.time.Timer;
 
+const Mouse = struct {
+    pos: Vec2 = .{},
+    click: bool = false,
+};
+
+const ButtonState = enum { Idle, Hovered, Pressed };
+
 // Main app
 var vg: nvg = undefined;
 var demo: Demo = undefined;
@@ -38,6 +45,7 @@ var opts = packed struct {
     premult: bool = false,
     dpi: bool = true,
     animations: bool = false,
+    srgb: bool = false,
 }{};
 var watch: Stopwatch = undefined;
 var elapsed: f32 = 0;
@@ -165,6 +173,7 @@ fn wndProc(
                 'P' => opts.premult = !opts.premult,
                 'D' => opts.dpi = !opts.dpi,
                 'A' => opts.animations = !opts.animations,
+                'F' => opts.srgb = !opts.srgb,
                 else => {},
             }
         },
@@ -190,7 +199,17 @@ fn wndProc(
             var cursor_pt: win32.POINT = undefined;
             _ = win32.GetCursorPos(&cursor_pt);
             _ = win32.ScreenToClient(win, &cursor_pt);
-            const cursor = Vec2.fromInt(cursor_pt).mul(pixel_size);
+            const cursor = Mouse{
+                .pos = Vec2.fromInt(cursor_pt).mul(pixel_size),
+                .click = win32.isKeyPressed(0x01), // VK_LBUTTON
+            };
+
+            const GL_FRAMEBUFFER_SRGB = 0x8DB9;
+            if (opts.srgb) {
+                c.glEnable(GL_FRAMEBUFFER_SRGB);
+            } else {
+                c.glDisable(GL_FRAMEBUFFER_SRGB);
+            }
 
             // Update and render
             c.glViewport(0, 0, viewport_rect.right, viewport_rect.bottom);
@@ -291,10 +310,10 @@ const Demo = struct {
         }
     }
 
-    fn draw(self: Demo, m: Vec2, viewport: Vec2, t: f32, blowup: bool) void {
+    fn draw(self: Demo, m: Mouse, viewport: Vec2, t: f32, blowup: bool) void {
         if (opts.animations) {
-            drawEyes(viewport.x - 250, 50, 150, 100, m.x, m.y, t);
-            drawParagraph(viewport.x - 450, 50, 150, 100, m.x, m.y);
+            drawEyes(viewport.x - 250, 50, 150, 100, m.pos.x, m.pos.y, t);
+            drawParagraph(viewport.x - 450, 50, 150, 100, m.pos.x, m.pos.y);
             drawGraph(0, viewport.y / 2, viewport.x, viewport.y / 2, t);
             drawColorwheel(viewport.x - 300, viewport.y - 300, 250, 250, t);
 
@@ -538,12 +557,18 @@ const Demo = struct {
         _ = vg.text(x + 9 + 2, y + h * 0.5, cpToUTF8(ICON_CHECK, &icon));
     }
 
+    fn testButton(bounds: Rect, mouse: Mouse) ButtonState {
+        if (!bounds.contains(mouse.pos)) return .Idle;
+        if (mouse.click) return .Pressed;
+        return .Hovered;
+    }
+
     fn drawButton(
         preicon: u21,
         text: [:0]const u8,
         bounds: Rect,
         col: nvg.Color,
-        m: Vec2,
+        m: Mouse,
     ) void {
         var icon: [8]u8 = undefined;
         const cornerRadius = 4.0;
@@ -565,15 +590,24 @@ const Demo = struct {
         r = bounds.offset(-2);
         vg.beginPath();
         vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 1.0);
+
         if (!black) {
-            if (r.contains(m)) {
-                var light = col;
-                light.r = math.clamp(light.r * 1.2, 0, 1);
-                light.g = math.clamp(light.g * 1.2, 0, 1);
-                light.b = math.clamp(light.b * 1.2, 0, 1);
-                vg.fillColor(light);
-            } else {
-                vg.fillColor(col);
+            switch (testButton(bounds, m)) {
+                .Pressed => {
+                    var dark = col;
+                    dark.r = math.clamp(dark.r * 0.8, 0, 1);
+                    dark.g = math.clamp(dark.g * 0.8, 0, 1);
+                    dark.b = math.clamp(dark.b * 0.8, 0, 1);
+                    vg.fillColor(dark);
+                },
+                .Hovered => {
+                    var light = col;
+                    light.r = math.clamp(light.r * 1.2, 0, 1);
+                    light.g = math.clamp(light.g * 1.2, 0, 1);
+                    light.b = math.clamp(light.b * 1.2, 0, 1);
+                    vg.fillColor(light);
+                },
+                else => vg.fillColor(col),
             }
             vg.fill();
         }

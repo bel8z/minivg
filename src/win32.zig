@@ -60,6 +60,15 @@ pub extern "user32" fn GetCursorPos(
     out_point: *win32.POINT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
+extern "user32" fn GetAsyncKeyState(
+    vkey: c_int,
+) callconv(win32.WINAPI) i16;
+
+pub fn isKeyPressed(vkey: c_int) bool {
+    const word: u16 = @bitCast(GetAsyncKeyState(vkey));
+    return ((word & 0x8000) != 0);
+}
+
 pub extern "user32" fn SetTimer(
     hwnd: win32.HWND,
     event_id: isize,
