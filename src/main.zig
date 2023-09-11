@@ -30,7 +30,15 @@ const Stopwatch = std.time.Timer;
 
 const Mouse = struct {
     pos: Vec2 = .{},
-    click: bool = false,
+    button: packed struct {
+        left: bool = false,
+        right: bool = false,
+        middle: bool = false,
+    } = .{},
+
+    pub fn click(mouse: Mouse) bool {
+        return (mouse.button.left or mouse.button.middle or mouse.button.right);
+    }
 };
 
 const ButtonState = enum { Idle, Hovered, Pressed };
@@ -201,7 +209,11 @@ fn wndProc(
             _ = win32.ScreenToClient(win, &cursor_pt);
             const cursor = Mouse{
                 .pos = Vec2.fromInt(cursor_pt).mul(pixel_size),
-                .click = win32.isKeyPressed(0x01), // VK_LBUTTON
+                .button = .{
+                    .left = win32.isKeyPressed(0x01), // VK_LBUTTON
+                    .right = win32.isKeyPressed(0x02), // VK_RBUTTON
+                    .middle = win32.isKeyPressed(0x04), // VK_MBUTTON
+                },
             };
 
             const GL_FRAMEBUFFER_SRGB = 0x8DB9;
@@ -559,7 +571,7 @@ const Demo = struct {
 
     fn testButton(bounds: Rect, mouse: Mouse) ButtonState {
         if (!bounds.contains(mouse.pos)) return .Idle;
-        if (mouse.click) return .Pressed;
+        if (mouse.button.left) return .Pressed;
         return .Hovered;
     }
 
