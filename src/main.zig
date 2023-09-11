@@ -1417,3 +1417,22 @@ const Demo = struct {
         return buffer.toOwnedSlice();
     }
 };
+
+// UI stuff
+
+const ControlOpts = packed struct {
+    // Appearance
+    border: bool = false,
+    text: bool = false,
+    background: bool = false,
+    shadow: bool = false,
+    // Behavior
+    clip: bool = false,
+    scroll: bool = false,
+    interact: bool = false,
+    active_animation: bool = false,
+};
+
+const Control = struct {
+    opst: ControlOpts = .{},
+};
