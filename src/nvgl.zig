@@ -39,6 +39,9 @@ pub fn init(gl: *const GL, allocator: Allocator, options: Options) !nvg {
     };
 }
 
+// TODO (Matteo): Use an arena for per-frame allocations, while keeping
+// textures in persistent memory
+
 const GLContext = struct {
     gl: *const GL,
     allocator: Allocator,
