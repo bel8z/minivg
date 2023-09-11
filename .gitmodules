@@ -1,4 +1,4 @@
 [submodule "deps/nanovg"]
 	path = deps/nanovg
-	url = https://github.com/fabioarnold/nanovg-zig.git
+	url = https://github.com/bel8z/nanovg-zig.git
 	branch = main
