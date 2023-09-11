@@ -12,15 +12,15 @@ const L = win32.L;
 
 // Dependencies
 const nvg = @import("nanovg");
+const nvgl = @import("nvgl.zig");
 const PerfGraph = @import("perf");
 
-// TODO (Matteo): Replace with custom gl loader
 const c = @cImport({
-    @cInclude("glad/glad.h");
     @cDefine("STBI_WRITE_NO_STDIO", "1");
     @cInclude("stb_image_write.h");
 });
 
+const GL = @import("gl.zig");
 const math = @import("math.zig");
 const Vec2 = math.Vec2(f32);
 const Rect = math.AlignedBox(f32);
@@ -44,6 +44,7 @@ const Mouse = struct {
 const ButtonState = enum { Idle, Hovered, Pressed };
 
 // Main app
+var gl: GL = undefined;
 var vg: nvg = undefined;
 var demo: Demo = undefined;
 var fps = PerfGraph.init(.fps, "Frame Time");
@@ -113,18 +114,15 @@ pub fn main() anyerror!void {
 
     const dc = try win32.getDC(win);
     defer _ = win32.releaseDC(win, dc);
-    const ctx = try wgl.createContext(dc, .{ .v_major = 2 });
+    const ctx = try wgl.createContext(dc, .{ .v_major = 3 });
     _ = try wgl.makeCurrent(dc, ctx);
     try wgl.setSwapInterval(1);
 
     // Init OpenGL
-    // TODO (Matteo): Replace with custom OpenGL loader
-    if (c.gladLoadGL() == 0) return error.GLADInitFailed; // try gl.init();
-    // gl.enable(GL.FRAMEBUFFER_SRGB);
+    try gl.init();
 
     // Init NanoVG context
-    // TODO (Matteo): Replace with custom gl loader
-    vg = try nvg.gl.init(std.heap.page_allocator, .{
+    vg = try nvgl.init(&gl, std.heap.page_allocator, .{
         .antialias = true,
         .stencil_strokes = false,
         .debug = true,
@@ -216,21 +214,16 @@ fn wndProc(
                 },
             };
 
-            const GL_FRAMEBUFFER_SRGB = 0x8DB9;
-            if (opts.srgb) {
-                c.glEnable(GL_FRAMEBUFFER_SRGB);
-            } else {
-                c.glDisable(GL_FRAMEBUFFER_SRGB);
-            }
+            gl.option(.FRAMEBUFFER_SRGB, opts.srgb);
 
             // Update and render
-            c.glViewport(0, 0, viewport_rect.right, viewport_rect.bottom);
+            gl.viewport(0, 0, viewport_rect.right, viewport_rect.bottom);
             if (opts.premult) {
-                c.glClearColor(0, 0, 0, 0);
+                gl.clearColor(0, 0, 0, 0);
             } else {
-                c.glClearColor(0.3, 0.3, 0.32, 1.0);
+                gl.clearColor(0.3, 0.3, 0.32, 1.0);
             }
-            c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+            gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
 
             vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
 

@@ -24,6 +24,12 @@ pub fn build(b: *std.build.Builder) void {
         .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
     });
 
+    const c_flags = .{
+        "-DFONS_NO_STDIO",
+        "-DSTBI_NO_STDIO",
+        "-fno-stack-protector",
+    };
+
     const exe = b.addExecutable(.{
         .name = "minivg",
         // In this case the main source file is merely a path, however, in more
@@ -45,15 +51,13 @@ pub fn build(b: *std.build.Builder) void {
     exe.linkSystemLibrary("opengl32");
     exe.linkLibC();
     exe.addIncludePath(.{ .path = nvg_path ++ "/src" });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &.{ "-DFONS_NO_STDIO", "-fno-stack-protector" } });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &.{ "-DSTBI_NO_STDIO", "-fno-stack-protector" } });
+    exe.addIncludePath(.{ .path = nvg_path ++ "/examples" });
     exe.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
     exe.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
     exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    exe.addIncludePath(.{ .path = nvg_path ++ "/lib/gl2/include" });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/lib/gl2/src/glad.c" }, .flags = &.{} });
-    exe.addIncludePath(.{ .path = nvg_path ++ "/examples" });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/examples/stb_image_write.c" }, .flags = &.{ "-DSTBI_NO_STDIO", "-fno-stack-protector" } });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
+    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/examples/stb_image_write.c" }, .flags = &c_flags });
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
