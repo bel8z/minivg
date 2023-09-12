@@ -1419,21 +1419,64 @@ const Demo = struct {
     }
 };
 
-// UI stuff
+// UI stuff, inspired by Ryan Fleury's blog
 
-const ControlOpts = packed struct {
-    // Appearance
-    border: bool = false,
-    text: bool = false,
-    background: bool = false,
-    shadow: bool = false,
-    // Behavior
-    clip: bool = false,
-    scroll: bool = false,
-    interact: bool = false,
-    active_animation: bool = false,
-};
+const Ui = struct {
+    active_layout: Layout,
 
-const Control = struct {
-    opst: ControlOpts = .{},
+    const ControlOpts = packed struct {
+        // Appearance
+        border: bool = false,
+        text: bool = false,
+        background: bool = false,
+        shadow: bool = false,
+        // Behavior
+        clip: bool = false,
+        scroll: bool = false,
+        interact: bool = false,
+        active_animation: bool = false,
+    };
+
+    const Control = struct {
+        opst: ControlOpts = .{},
+
+        // Layout input
+        in_size_x: Size,
+        in_size_y: Size,
+
+        // Per-frame layout output
+        out_rel_pos: Vec2, // Position relative to parent
+        out_rect: Rect, // Control rectangle in window coordinates
+    };
+
+    const Layout = struct {};
+
+    const SizeKind = enum {
+        Null,
+        Pixels,
+        TextContent,
+        Percent,
+        ChildrenSum, // ???
+    };
+
+    const Size = struct {
+        kind: Kind,
+        value: f32,
+        strictness: f32,
+
+        const Kind = enum {
+            Null,
+            Pixels,
+            TextContent,
+            Percent,
+            ChildrenSum, // ???
+        };
+    };
+
+    const Output = {};
+
+    fn button(self: *Ui) Output {
+        _ = self;
+        return .{};
+    }
 };
