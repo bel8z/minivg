@@ -114,7 +114,8 @@ pub fn main() anyerror!void {
 
     const dc = try win32.getDC(win);
     defer _ = win32.releaseDC(win, dc);
-    const ctx = try wgl.createContext(dc, .{ .v_major = 3, .v_minor = 3 });
+    // TODO (Matteo): Investigate performance issues with 3.3
+    const ctx = try wgl.createContext(dc, .{ .v_major = 3, .v_minor = 1 });
     _ = try wgl.makeCurrent(dc, ctx);
     try wgl.setSwapInterval(1);
 
