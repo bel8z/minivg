@@ -15,11 +15,6 @@ const nvg = @import("nanovg");
 const nvgl = @import("nvgl.zig");
 const PerfGraph = @import("perf");
 
-const c = @cImport({
-    @cDefine("STBI_WRITE_NO_STDIO", "1");
-    @cInclude("stb_image_write.h");
-});
-
 const GL = @import("gl.zig");
 const math = @import("math.zig");
 const Vec2 = math.Vec2(f32);
@@ -50,7 +45,6 @@ var demo: Demo = undefined;
 var fps = PerfGraph.init(.fps, "Frame Time");
 var opts = packed struct {
     blowup: bool = false,
-    screenshot: bool = false,
     premult: bool = false,
     dpi: bool = true,
     animations: bool = false,
@@ -176,7 +170,6 @@ fn wndProc(
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
                 VK_SPACE => opts.blowup = !opts.blowup,
-                'S' => opts.screenshot = true,
                 'P' => opts.premult = !opts.premult,
                 'D' => opts.dpi = !opts.dpi,
                 'A' => opts.animations = !opts.animations,
@@ -1374,48 +1367,6 @@ const Demo = struct {
                 }
             }
         }
-    }
-
-    fn stbiWriteFunc(context: ?*anyopaque, data: ?*anyopaque, size: c_int) callconv(.C) void {
-        const buffer: *ArrayList(u8) = @alignCast(@ptrCast(context.?));
-        const slice = @as([*]const u8, @ptrCast(data.?))[0..@intCast(size)];
-        buffer.appendSlice(slice) catch return;
-    }
-
-    fn saveScreenshot(allocator: Allocator, w: i32, h: i32, premult: bool) ![]const u8 {
-        const uw: usize = @intCast(w);
-        const uh: usize = @intCast(h);
-        const stride = uw * 4;
-        const image = try allocator.alloc(u8, uw * uh * 4);
-        c.glReadPixels(0, 0, w, h, c.GL_RGBA, c.GL_UNSIGNED_BYTE, image.ptr);
-        if (premult) {
-            unpremultiplyAlpha(image, uw, uh, stride);
-        } else {
-            // Set alpha
-            var i: usize = 3;
-            while (i < image.len) : (i += 4) {
-                image[i] = 0xff;
-            }
-        }
-
-        // flip vertically
-        var y0: usize = 0;
-        while (y0 < uh / 2) : (y0 += 1) {
-            const y1 = uh - 1 - y0;
-            const row0 = image[y0 * stride ..][0..stride];
-            const row1 = image[y1 * stride ..][0..stride];
-            var x: usize = 0;
-            while (x < stride) : (x += 1) {
-                std.mem.swap(u8, &row0[x], &row1[x]);
-            }
-        }
-
-        var buffer = ArrayList(u8).init(allocator);
-        errdefer buffer.deinit();
-        if (c.stbi_write_png_to_func(stbiWriteFunc, &buffer, w, h, 4, image.ptr, w * 4) == 0) {
-            return error.StbiWritePngFailed;
-        }
-        return buffer.toOwnedSlice();
     }
 };
 

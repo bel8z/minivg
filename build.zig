@@ -27,7 +27,6 @@ pub fn build(b: *std.build.Builder) void {
     const c_flags = .{
         "-DFONS_NO_STDIO",
         "-DSTBI_NO_STDIO",
-        "-fno-stack-protector",
     };
 
     const exe = b.addExecutable(.{
@@ -57,7 +56,6 @@ pub fn build(b: *std.build.Builder) void {
     exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
     exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
     exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/examples/stb_image_write.c" }, .flags = &c_flags });
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
