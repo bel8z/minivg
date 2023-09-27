@@ -42,6 +42,19 @@ const image_files = [_][]const u8{
     @embedFile("assets/image12.jpg"),
 };
 
+const Mouse = struct {
+    pos: Vec2 = .{},
+    button: packed struct {
+        left: bool = false,
+        right: bool = false,
+        middle: bool = false,
+    } = .{},
+
+    pub fn click(mouse: Mouse) bool {
+        return (mouse.button.left or mouse.button.middle or mouse.button.right);
+    }
+};
+
 const App = struct {
     // Demo stuff
     blowup: bool = false,
@@ -54,6 +67,9 @@ const App = struct {
     watch: Stopwatch = undefined,
     elapsed: f32 = 0,
     fps: PerfGraph = PerfGraph.init(.fps, "Frame Time"),
+
+    const PerfGraph = @import("perf");
+    const Stopwatch = std.time.Timer;
 
     fn start(self: *App) !void {
         self.watch = try Stopwatch.start();
@@ -79,23 +95,6 @@ const App = struct {
 };
 
 var app = App{};
-
-const PerfGraph = @import("perf");
-const Stopwatch = std.time.Timer;
-
-/// Mouse input
-const Mouse = struct {
-    pos: Vec2 = .{},
-    button: packed struct {
-        left: bool = false,
-        right: bool = false,
-        middle: bool = false,
-    } = .{},
-
-    pub fn click(mouse: Mouse) bool {
-        return (mouse.button.left or mouse.button.middle or mouse.button.right);
-    }
-};
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
