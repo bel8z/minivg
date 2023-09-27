@@ -125,6 +125,14 @@ pub fn main() anyerror!void {
     });
     defer vg.deinit();
 
+    // Init fonts
+    _ = vg.createFontMem("icons", @embedFile("assets/entypo.ttf"));
+    const sans = vg.createFontMem("sans", @embedFile("assets/Roboto-Regular.ttf"));
+    const bold = vg.createFontMem("sans-bold", @embedFile("assets/Roboto-Bold.ttf"));
+    const emoji = vg.createFontMem("emoji", @embedFile("assets/NotoEmoji-Regular.ttf"));
+    _ = vg.addFallbackFontId(sans, emoji);
+    _ = vg.addFallbackFontId(bold, emoji);
+
     // Init demo stuff
     demo.load();
     defer demo.free();
@@ -244,33 +252,380 @@ inline fn destroy(win: win32.HWND) void {
     win32.destroyWindow(win) catch unreachable;
 }
 
+// Icons
+const Icon = enum(u21) {
+    None = 0,
+
+    Search = 0x1F50D,
+    CircledCross = 0x2716,
+    ChevronRight = 0xE75E,
+    Check = 0x2713,
+    Login = 0xE740,
+    Trash = 0xE729,
+
+    _,
+};
+
+fn icon(x: f32, y: f32, icon_id: Icon) f32 {
+    var buf: [8]u8 = undefined;
+    vg.fontFace("icons");
+    return vg.text(x, y, encodeIcon(icon_id, &buf));
+}
+
+fn iconBounds(x: f32, y: f32, icon_id: Icon, bounds: ?*[4]f32) f32 {
+    var buf: [8]u8 = undefined;
+    vg.fontFace("icons");
+    return vg.textBounds(x, y, encodeIcon(icon_id, &buf), bounds);
+}
+
+fn encodeIcon(icon_cp: Icon, buf: *[8]u8) []const u8 {
+    const len = std.unicode.utf8Encode(@intFromEnum(icon_cp), buf[0..]) catch unreachable;
+    buf[len] = 0;
+    return buf[0..len];
+}
+
+// Controls
+
+fn label(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+    _ = w;
+
+    vg.fontSize(15.0);
+    vg.fontFace("sans");
+    vg.fillColor(nvg.rgba(255, 255, 255, 128));
+
+    vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
+    _ = vg.text(x, y + h * 0.5, text);
+}
+
+fn textBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+    drawEditBox(x, y, w, h);
+
+    vg.fontSize(17.0);
+    vg.fontFace("sans");
+    vg.fillColor(nvg.rgba(255, 255, 255, 64));
+    vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
+    _ = vg.text(x + h * 0.3, y + h * 0.5, text);
+}
+
+// TODO (Matteo): Better naming
+fn textBoxNum(text: [:0]const u8, units: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+    drawEditBox(x, y, w, h);
+
+    const uw = vg.textBounds(0, 0, units, null);
+
+    vg.fontSize(15.0);
+    vg.fontFace("sans");
+    vg.fillColor(nvg.rgba(255, 255, 255, 64));
+    vg.textAlign(.{ .horizontal = .right, .vertical = .middle });
+    _ = vg.text(x + w - h * 0.3, y + h * 0.5, units);
+
+    vg.fontSize(17.0);
+    vg.fontFace("sans");
+    vg.fillColor(nvg.rgba(255, 255, 255, 128));
+    vg.textAlign(.{ .horizontal = .right, .vertical = .middle });
+    _ = vg.text(x + w - uw - h * 0.5, y + h * 0.5, text);
+}
+
+fn drawEditBox(x: f32, y: f32, w: f32, h: f32) void {
+    // Edit
+    const bg = vg.boxGradient(x + 1, y + 1 + 1.5, w - 2, h - 2, 3, 4, nvg.rgba(255, 255, 255, 32), nvg.rgba(32, 32, 32, 32));
+    vg.beginPath();
+    vg.roundedRect(x + 1, y + 1, w - 2, h - 2, 4 - 1);
+    vg.fillPaint(bg);
+    vg.fill();
+
+    vg.beginPath();
+    vg.roundedRect(x + 0.5, y + 0.5, w - 1, h - 1, 4 - 0.5);
+    vg.strokeColor(nvg.rgba(0, 0, 0, 48));
+    vg.stroke();
+}
+
+fn checkBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+    _ = w;
+
+    vg.fontSize(15.0);
+    vg.fontFace("sans");
+    vg.fillColor(nvg.rgba(255, 255, 255, 160));
+
+    vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
+    _ = vg.text(x + 28, y + h * 0.5, text);
+
+    const bg = vg.boxGradient(x + 1, y + @round(h * 0.5) - 9 + 1, 18, 18, 3, 3, nvg.rgba(0, 0, 0, 32), nvg.rgba(0, 0, 0, 92));
+    vg.beginPath();
+    vg.roundedRect(x + 1, y + @round(h * 0.5) - 9, 18, 18, 3);
+    vg.fillPaint(bg);
+    vg.fill();
+
+    vg.fontSize(33);
+    vg.fillColor(nvg.rgba(255, 255, 255, 128));
+    vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
+    _ = icon(x + 9 + 2, y + h * 0.5, .Check);
+}
+
+fn button(
+    preicon: Icon,
+    text: [:0]const u8,
+    bounds: Rect,
+    col: nvg.Color,
+    m: Mouse,
+) ButtonState {
+    const state = testButton(bounds, m);
+    drawButton(preicon, text, bounds, col, state);
+    return state;
+}
+
+fn testButton(bounds: Rect, mouse: Mouse) ButtonState {
+    if (!bounds.contains(mouse.pos)) return .Idle;
+    if (mouse.button.left) return .Pressed;
+    return .Hovered;
+}
+
+fn drawButton(
+    preicon: Icon,
+    text: [:0]const u8,
+    bounds: Rect,
+    col: nvg.Color,
+    state: ButtonState,
+) void {
+    const cornerRadius = 4.0;
+    var iw: f32 = 0;
+    var r: Rect = undefined;
+
+    const h = bounds.size.y;
+    const cen = bounds.center();
+    const black = (col.r == 0 and col.g == 0 and col.b == 0 and col.a == 0);
+    const alpha: u8 = if (black) 16 else 32;
+    const bg = vg.linearGradient(
+        bounds.origin.x,
+        bounds.origin.y,
+        bounds.origin.x,
+        bounds.origin.y + h,
+        nvg.rgba(255, 255, 255, alpha),
+        nvg.rgba(0, 0, 0, alpha),
+    );
+    r = bounds.offset(-2);
+    vg.beginPath();
+    vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 1.0);
+
+    if (!black) {
+        switch (state) {
+            .Pressed => {
+                var dark = col;
+                dark.r = math.clamp(dark.r * 0.8, 0, 1);
+                dark.g = math.clamp(dark.g * 0.8, 0, 1);
+                dark.b = math.clamp(dark.b * 0.8, 0, 1);
+                vg.fillColor(dark);
+            },
+            .Hovered => {
+                var light = col;
+                light.r = math.clamp(light.r * 1.2, 0, 1);
+                light.g = math.clamp(light.g * 1.2, 0, 1);
+                light.b = math.clamp(light.b * 1.2, 0, 1);
+                vg.fillColor(light);
+            },
+            else => vg.fillColor(col),
+        }
+        vg.fill();
+    }
+    vg.fillPaint(bg);
+    vg.fill();
+
+    r = bounds.offset(-1);
+    vg.beginPath();
+    vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 0.5);
+    vg.strokeColor(nvg.rgba(0, 0, 0, 48));
+    vg.stroke();
+
+    vg.fontSize(17.0);
+    vg.fontFace("sans-bold");
+    const tw = vg.textBounds(0, 0, text, null);
+    if (preicon != .None) {
+        vg.fontSize(h * 1.3);
+
+        iw = iconBounds(0, 0, preicon, null);
+        iw += h * 0.15;
+
+        vg.fillColor(nvg.rgba(255, 255, 255, 96));
+        vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
+        _ = icon(cen.x - tw * 0.5 - iw * 0.75, cen.y, preicon);
+    }
+
+    vg.fontSize(17.0);
+    vg.fontFace("sans-bold");
+    vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
+    vg.fillColor(nvg.rgba(0, 0, 0, 160));
+    _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y - 1, text);
+    vg.fillColor(nvg.rgba(255, 255, 255, 160));
+    _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y, text);
+}
+
+fn slider(pos: f32, bounds: Rect) void {
+    const w = bounds.size.x;
+    const h = bounds.size.y;
+    const cx = bounds.origin.x + @round(pos * w);
+    const cy = bounds.origin.y + @round(h * 0.5);
+    const kr = @round(h * 0.25);
+
+    vg.save();
+    vg.restore();
+
+    // Slot
+    var bg = vg.boxGradient(
+        bounds.origin.x,
+        cy - 2 + 1,
+        w,
+        4,
+        2,
+        2,
+        nvg.rgba(0, 0, 0, 32),
+        nvg.rgba(0, 0, 0, 128),
+    );
+    vg.beginPath();
+    vg.roundedRect(bounds.origin.x, cy - 2, w, 4, 2);
+    vg.fillPaint(bg);
+    vg.fill();
+
+    // Knob Shadow
+    bg = vg.radialGradient(
+        cx,
+        cy + 1,
+        kr - 3,
+        kr + 3,
+        nvg.rgba(0, 0, 0, 64),
+        nvg.rgba(0, 0, 0, 0),
+    );
+    vg.beginPath();
+    vg.rect(cx - kr - 5, cy - kr - 5, kr * 2 + 5 + 5, kr * 2 + 5 + 5 + 3);
+    vg.circle(cx, cy, kr);
+    vg.pathWinding(nvg.Winding.solidity(.hole));
+    vg.fillPaint(bg);
+    vg.fill();
+
+    // Knob
+    const knob = vg.linearGradient(
+        bounds.origin.x,
+        cy - kr,
+        bounds.origin.x,
+        cy + kr,
+        nvg.rgba(255, 255, 255, 16),
+        nvg.rgba(0, 0, 0, 16),
+    );
+    vg.beginPath();
+    vg.circle(cx, cy, kr - 1);
+    vg.fillColor(nvg.rgba(40, 43, 48, 255));
+    vg.fill();
+    vg.fillPaint(knob);
+    vg.fill();
+
+    vg.beginPath();
+    vg.circle(cx, cy, kr - 0.5);
+    vg.strokeColor(nvg.rgba(0, 0, 0, 92));
+    vg.stroke();
+}
+
+fn colorPicker(x: f32, y: f32, w: f32, h: f32, t: f32) void {
+    const hue = @sin(t * 0.12);
+    var paint: nvg.Paint = undefined;
+
+    vg.save();
+    vg.restore();
+
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const r1 = (if (w < h) w else h) * 0.5 - 5.0;
+    const r0 = r1 - 20.0;
+    const aeps = 0.5 / r1; // half a pixel arc length in radians (2pi cancels out).
+
+    var i: f32 = 0;
+    while (i < 6) : (i += 1) {
+        const a0 = i / 6.0 * math.pi * 2.0 - aeps;
+        const a1 = (i + 1.0) / 6.0 * math.pi * 2.0 + aeps;
+        vg.beginPath();
+        vg.arc(cx, cy, r0, a0, a1, .cw);
+        vg.arc(cx, cy, r1, a1, a0, .ccw);
+        vg.closePath();
+        const ax = cx + @cos(a0) * (r0 + r1) * 0.5;
+        const ay = cy + @sin(a0) * (r0 + r1) * 0.5;
+        const bx = cx + @cos(a1) * (r0 + r1) * 0.5;
+        const by = cy + @sin(a1) * (r0 + r1) * 0.5;
+        paint = vg.linearGradient(ax, ay, bx, by, nvg.hsla(a0 / (math.pi * 2.0), 1.0, 0.55, 255), nvg.hsla(a1 / (math.pi * 2.0), 1.0, 0.55, 255));
+        vg.fillPaint(paint);
+        vg.fill();
+    }
+
+    vg.beginPath();
+    vg.circle(cx, cy, r0 - 0.5);
+    vg.circle(cx, cy, r1 + 0.5);
+    vg.strokeColor(nvg.rgba(0, 0, 0, 64));
+    vg.strokeWidth(1.0);
+    vg.stroke();
+
+    // Selector
+    vg.save();
+    vg.translate(cx, cy);
+    vg.rotate(hue * math.pi * 2);
+
+    // Marker on
+    vg.strokeWidth(2.0);
+    vg.beginPath();
+    vg.rect(r0 - 1, -3, r1 - r0 + 2, 6);
+    vg.strokeColor(nvg.rgba(255, 255, 255, 192));
+    vg.stroke();
+
+    paint = vg.boxGradient(r0 - 3, -5, r1 - r0 + 6, 10, 2, 4, nvg.rgba(0, 0, 0, 128), nvg.rgba(0, 0, 0, 0));
+    vg.beginPath();
+    vg.rect(r0 - 2 - 10, -4 - 10, r1 - r0 + 4 + 20, 8 + 20);
+    vg.rect(r0 - 2, -4, r1 - r0 + 4, 8);
+    vg.pathWinding(nvg.Winding.solidity(.hole));
+    vg.fillPaint(paint);
+    vg.fill();
+
+    // Center triangle
+    const r = r0 - 6;
+    var ax = -0.5 * r; // @cos(120.0 / 180.0 * math.pi) * r;
+    var ay = 0.86602540378 * r; // @sin(120.0 / 180.0 * math.pi) * r;
+    const bx = -0.5 * r; // @cos(-120.0 / 180.0 * math.pi) * r;
+    const by = -0.86602540378 * r; // @sin(-120.0 / 180.0 * math.pi) * r;
+    vg.beginPath();
+    vg.moveTo(r, 0);
+    vg.lineTo(ax, ay);
+    vg.lineTo(bx, by);
+    vg.closePath();
+    paint = vg.linearGradient(r, 0, ax, ay, nvg.hsla(hue, 1.0, 0.5, 255), nvg.rgba(255, 255, 255, 255));
+    vg.fillPaint(paint);
+    vg.fill();
+    paint = vg.linearGradient((r + ax) * 0.5, (0 + ay) * 0.5, bx, by, nvg.rgba(0, 0, 0, 0), nvg.rgba(0, 0, 0, 255));
+    vg.fillPaint(paint);
+    vg.fill();
+    vg.strokeColor(nvg.rgba(0, 0, 0, 64));
+    vg.stroke();
+
+    // Select circle on triangle
+    ax = -0.5 * r * 0.3; // @cos(120.0 / 180.0 * math.pi) * r * 0.3;
+    ay = 0.86602540378 * r * 0.4; // @sin(120.0 / 180.0 * math.pi) * r * 0.4;
+    vg.strokeWidth(2.0);
+    vg.beginPath();
+    vg.circle(ax, ay, 5);
+    vg.strokeColor(nvg.rgba(255, 255, 255, 192));
+    vg.stroke();
+
+    paint = vg.radialGradient(ax, ay, 7, 9, nvg.rgba(0, 0, 0, 64), nvg.rgba(0, 0, 0, 0));
+    vg.beginPath();
+    vg.rect(ax - 20, ay - 20, 40, 40);
+    vg.circle(ax, ay, 7);
+    vg.pathWinding(nvg.Winding.solidity(.hole));
+    vg.fillPaint(paint);
+    vg.fill();
+
+    vg.restore();
+}
+
 // Demo
 const Demo = struct {
     const Allocator = std.mem.Allocator;
     const ArrayList = std.ArrayList;
 
-    fontNormal: nvg.Font,
-    fontBold: nvg.Font,
-    fontIcons: nvg.Font,
-    fontEmoji: nvg.Font,
-    images: [12]nvg.Image,
-
-    const ICON_SEARCH = 0x1F50D;
-    const ICON_CIRCLED_CROSS = 0x2716;
-    const ICON_CHEVRON_RIGHT = 0xE75E;
-    const ICON_CHECK = 0x2713;
-    const ICON_LOGIN = 0xE740;
-    const ICON_TRASH = 0xE729;
-
-    fn cpToUTF8(cp: u21, buf: *[8]u8) []const u8 {
-        const len = std.unicode.utf8Encode(cp, buf[0..]) catch unreachable;
-        buf[len] = 0;
-        return buf[0..len];
-    }
-
-    fn isBlack(col: nvg.Color) bool {
-        return col.r == 0 and col.g == 0 and col.b == 0 and col.a == 0;
-    }
+    images: [image_files.len]nvg.Image,
 
     const image_files = [_][]const u8{
         @embedFile("assets/image1.jpg"),
@@ -291,17 +646,6 @@ const Demo = struct {
         for (&self.images, 0..) |*image, i| {
             image.* = vg.createImageMem(image_files[i], .{});
         }
-
-        const entypo = @embedFile("assets/entypo.ttf");
-        self.fontIcons = vg.createFontMem("icons", entypo);
-        const normal = @embedFile("assets/Roboto-Regular.ttf");
-        self.fontNormal = vg.createFontMem("sans", normal);
-        const bold = @embedFile("assets/Roboto-Bold.ttf");
-        self.fontBold = vg.createFontMem("sans-bold", bold);
-        const emoji = @embedFile("assets/NotoEmoji-Regular.ttf");
-        self.fontEmoji = vg.createFontMem("emoji", emoji);
-        _ = vg.addFallbackFontId(self.fontNormal, self.fontEmoji);
-        _ = vg.addFallbackFontId(self.fontBold, self.fontEmoji);
     }
 
     fn free(self: Demo) void {
@@ -315,7 +659,7 @@ const Demo = struct {
             drawEyes(viewport.x - 250, 50, 150, 100, m.pos.x, m.pos.y, t);
             drawParagraph(viewport.x - 450, 50, 150, 100, m.pos.x, m.pos.y);
             drawGraph(0, viewport.y / 2, viewport.x, viewport.y / 2, t);
-            drawColorwheel(viewport.x - 300, viewport.y - 300, 250, 250, t);
+            colorPicker(viewport.x - 300, viewport.y - 300, 250, 250, t);
 
             // Line joints
             drawLines(120, viewport.y - 50, 600, 50, t);
@@ -346,25 +690,25 @@ const Demo = struct {
         y += 45;
 
         // Form
-        drawLabel("Login", x, y, 280, 20);
+        label("Login", x, y, 280, 20);
         y += 25;
-        drawEditBox("Email", x, y, 280, 28);
+        textBox("Email", x, y, 280, 28);
         y += 35;
-        drawEditBox("Password", x, y, 280, 28);
+        textBox("Password", x, y, 280, 28);
         y += 38;
-        drawCheckBox("Remember me", x, y, 140, 28);
-        drawButton(ICON_LOGIN, "Sign in", rect(x + 138, y, 140, 28), nvg.rgba(0, 96, 128, 255), m);
+        checkBox("Remember me", x, y, 140, 28);
+        _ = button(.Login, "Sign in", rect(x + 138, y, 140, 28), nvg.rgba(0, 96, 128, 255), m);
         y += 45;
 
         // Slider
-        drawLabel("Diameter", x, y, 280, 20);
+        label("Diameter", x, y, 280, 20);
         y += 25;
-        drawEditBoxNum("123.00", "px", x + 180, y, 100, 28);
-        drawSlider(0.4, rect(x, y, 170, 28));
+        textBoxNum("123.00", "px", x + 180, y, 100, 28);
+        slider(0.4, rect(x, y, 170, 28));
         y += 55;
 
-        drawButton(ICON_TRASH, "Delete", rect(x, y, 160, 28), nvg.rgba(128, 16, 8, 255), m);
-        drawButton(0, "Cancel", rect(x + 170, y, 110, 28), nvg.rgba(0, 0, 0, 0), m);
+        _ = button(.Trash, "Delete", rect(x, y, 160, 28), nvg.rgba(128, 16, 8, 255), m);
+        _ = button(.None, "Cancel", rect(x + 170, y, 110, 28), nvg.rgba(0, 0, 0, 0), m);
 
         // Thumbnails box
         drawThumbnails(365, popy - 30, 160, 300, self.images[0..], t);
@@ -421,39 +765,7 @@ const Demo = struct {
         vg.restore();
     }
 
-    fn drawSearchBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        var icon: [8]u8 = undefined;
-        const cornerRadius = h / 2 - 1;
-
-        // Edit
-        const bg = vg.boxGradient(x, y + 1.5, w, h, h / 2, 5, nvg.rgba(0, 0, 0, 16), nvg.rgba(0, 0, 0, 92));
-        vg.beginPath();
-        vg.roundedRect(x, y, w, h, cornerRadius);
-        vg.fillPaint(bg);
-        vg.fill();
-
-        vg.fontSize(h * 1.3);
-        vg.fontFace("icons");
-        vg.fillColor(nvg.rgba(255, 255, 255, 64));
-        vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
-        _ = vg.text(x + h * 0.55, y + h * 0.55, cpToUTF8(ICON_SEARCH, &icon));
-
-        vg.fontSize(17.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 32));
-
-        vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-        _ = vg.text(x + h * 1.05, y + h * 0.5, text);
-
-        vg.fontSize(h * 1.3);
-        vg.fontFace("icons");
-        vg.fillColor(nvg.rgba(255, 255, 255, 32));
-        vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
-        _ = vg.text(x + w - h * 0.55, y + h * 0.55, cpToUTF8(ICON_CIRCLED_CROSS, &icon));
-    }
-
     fn drawDropDown(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        var icon: [8]u8 = undefined;
         const cornerRadius = 4.0;
 
         const bg = vg.linearGradient(x, y, x, y + h, nvg.rgba(255, 255, 255, 16), nvg.rgba(0, 0, 0, 16));
@@ -474,241 +786,38 @@ const Demo = struct {
         _ = vg.text(x + h * 0.3, y + h * 0.5, text);
 
         vg.fontSize(h * 1.3);
-        vg.fontFace("icons");
         vg.fillColor(nvg.rgba(255, 255, 255, 64));
         vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
-        _ = vg.text(x + w - h * 0.5, y + h * 0.5, cpToUTF8(ICON_CHEVRON_RIGHT, &icon));
+        _ = icon(x + w - h * 0.5, y + h * 0.5, .ChevronRight);
     }
 
-    fn drawLabel(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        _ = w;
+    fn drawSearchBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+        const cornerRadius = h / 2 - 1;
 
-        vg.fontSize(15.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 128));
-
-        vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-        _ = vg.text(x, y + h * 0.5, text);
-    }
-
-    fn drawEditBoxBase(x: f32, y: f32, w: f32, h: f32) void {
         // Edit
-        const bg = vg.boxGradient(x + 1, y + 1 + 1.5, w - 2, h - 2, 3, 4, nvg.rgba(255, 255, 255, 32), nvg.rgba(32, 32, 32, 32));
+        const bg = vg.boxGradient(x, y + 1.5, w, h, h / 2, 5, nvg.rgba(0, 0, 0, 16), nvg.rgba(0, 0, 0, 92));
         vg.beginPath();
-        vg.roundedRect(x + 1, y + 1, w - 2, h - 2, 4 - 1);
+        vg.roundedRect(x, y, w, h, cornerRadius);
         vg.fillPaint(bg);
         vg.fill();
 
-        vg.beginPath();
-        vg.roundedRect(x + 0.5, y + 0.5, w - 1, h - 1, 4 - 0.5);
-        vg.strokeColor(nvg.rgba(0, 0, 0, 48));
-        vg.stroke();
-    }
-
-    fn drawEditBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        drawEditBoxBase(x, y, w, h);
-
-        vg.fontSize(17.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 64));
-        vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-        _ = vg.text(x + h * 0.3, y + h * 0.5, text);
-    }
-
-    fn drawEditBoxNum(text: [:0]const u8, units: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        drawEditBoxBase(x, y, w, h);
-
-        const uw = vg.textBounds(0, 0, units, null);
-
-        vg.fontSize(15.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 64));
-        vg.textAlign(.{ .horizontal = .right, .vertical = .middle });
-        _ = vg.text(x + w - h * 0.3, y + h * 0.5, units);
-
-        vg.fontSize(17.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 128));
-        vg.textAlign(.{ .horizontal = .right, .vertical = .middle });
-        _ = vg.text(x + w - uw - h * 0.5, y + h * 0.5, text);
-    }
-
-    fn drawCheckBox(text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
-        var icon: [8]u8 = undefined;
-        _ = w;
-
-        vg.fontSize(15.0);
-        vg.fontFace("sans");
-        vg.fillColor(nvg.rgba(255, 255, 255, 160));
-
-        vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-        _ = vg.text(x + 28, y + h * 0.5, text);
-
-        const bg = vg.boxGradient(x + 1, y + @round(h * 0.5) - 9 + 1, 18, 18, 3, 3, nvg.rgba(0, 0, 0, 32), nvg.rgba(0, 0, 0, 92));
-        vg.beginPath();
-        vg.roundedRect(x + 1, y + @round(h * 0.5) - 9, 18, 18, 3);
-        vg.fillPaint(bg);
-        vg.fill();
-
-        vg.fontSize(33);
+        vg.fontSize(h * 1.3);
         vg.fontFace("icons");
-        vg.fillColor(nvg.rgba(255, 255, 255, 128));
+        vg.fillColor(nvg.rgba(255, 255, 255, 64));
         vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
-        _ = vg.text(x + 9 + 2, y + h * 0.5, cpToUTF8(ICON_CHECK, &icon));
-    }
-
-    fn testButton(bounds: Rect, mouse: Mouse) ButtonState {
-        if (!bounds.contains(mouse.pos)) return .Idle;
-        if (mouse.button.left) return .Pressed;
-        return .Hovered;
-    }
-
-    fn drawButton(
-        preicon: u21,
-        text: [:0]const u8,
-        bounds: Rect,
-        col: nvg.Color,
-        m: Mouse,
-    ) void {
-        var icon: [8]u8 = undefined;
-        const cornerRadius = 4.0;
-        var iw: f32 = 0;
-        var r: Rect = undefined;
-
-        const h = bounds.size.y;
-        const cen = bounds.center();
-        const black = isBlack(col);
-        const alpha: u8 = if (black) 16 else 32;
-        const bg = vg.linearGradient(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.origin.x,
-            bounds.origin.y + h,
-            nvg.rgba(255, 255, 255, alpha),
-            nvg.rgba(0, 0, 0, alpha),
-        );
-        r = bounds.offset(-2);
-        vg.beginPath();
-        vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 1.0);
-
-        if (!black) {
-            switch (testButton(bounds, m)) {
-                .Pressed => {
-                    var dark = col;
-                    dark.r = math.clamp(dark.r * 0.8, 0, 1);
-                    dark.g = math.clamp(dark.g * 0.8, 0, 1);
-                    dark.b = math.clamp(dark.b * 0.8, 0, 1);
-                    vg.fillColor(dark);
-                },
-                .Hovered => {
-                    var light = col;
-                    light.r = math.clamp(light.r * 1.2, 0, 1);
-                    light.g = math.clamp(light.g * 1.2, 0, 1);
-                    light.b = math.clamp(light.b * 1.2, 0, 1);
-                    vg.fillColor(light);
-                },
-                else => vg.fillColor(col),
-            }
-            vg.fill();
-        }
-        vg.fillPaint(bg);
-        vg.fill();
-
-        r = bounds.offset(-1);
-        vg.beginPath();
-        vg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 0.5);
-        vg.strokeColor(nvg.rgba(0, 0, 0, 48));
-        vg.stroke();
+        _ = icon(x + h * 0.55, y + h * 0.55, .Search);
 
         vg.fontSize(17.0);
-        vg.fontFace("sans-bold");
-        const tw = vg.textBounds(0, 0, text, null);
-        if (preicon != 0) {
-            vg.fontSize(h * 1.3);
-            vg.fontFace("icons");
-            iw = vg.textBounds(0, 0, cpToUTF8(preicon, &icon), null);
-            iw += h * 0.15;
-        }
+        vg.fontFace("sans");
+        vg.fillColor(nvg.rgba(255, 255, 255, 32));
 
-        if (preicon != 0) {
-            vg.fontSize(h * 1.3);
-            vg.fontFace("icons");
-            vg.fillColor(nvg.rgba(255, 255, 255, 96));
-            vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-            _ = vg.text(cen.x - tw * 0.5 - iw * 0.75, cen.y, cpToUTF8(preicon, &icon));
-        }
-
-        vg.fontSize(17.0);
-        vg.fontFace("sans-bold");
         vg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-        vg.fillColor(nvg.rgba(0, 0, 0, 160));
-        _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y - 1, text);
-        vg.fillColor(nvg.rgba(255, 255, 255, 160));
-        _ = vg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y, text);
-    }
+        _ = vg.text(x + h * 1.05, y + h * 0.5, text);
 
-    fn drawSlider(pos: f32, bounds: Rect) void {
-        const w = bounds.size.x;
-        const h = bounds.size.y;
-        const cx = bounds.origin.x + @round(pos * w);
-        const cy = bounds.origin.y + @round(h * 0.5);
-        const kr = @round(h * 0.25);
-
-        vg.save();
-        vg.restore();
-
-        // Slot
-        var bg = vg.boxGradient(
-            bounds.origin.x,
-            cy - 2 + 1,
-            w,
-            4,
-            2,
-            2,
-            nvg.rgba(0, 0, 0, 32),
-            nvg.rgba(0, 0, 0, 128),
-        );
-        vg.beginPath();
-        vg.roundedRect(bounds.origin.x, cy - 2, w, 4, 2);
-        vg.fillPaint(bg);
-        vg.fill();
-
-        // Knob Shadow
-        bg = vg.radialGradient(
-            cx,
-            cy + 1,
-            kr - 3,
-            kr + 3,
-            nvg.rgba(0, 0, 0, 64),
-            nvg.rgba(0, 0, 0, 0),
-        );
-        vg.beginPath();
-        vg.rect(cx - kr - 5, cy - kr - 5, kr * 2 + 5 + 5, kr * 2 + 5 + 5 + 3);
-        vg.circle(cx, cy, kr);
-        vg.pathWinding(nvg.Winding.solidity(.hole));
-        vg.fillPaint(bg);
-        vg.fill();
-
-        // Knob
-        const knob = vg.linearGradient(
-            bounds.origin.x,
-            cy - kr,
-            bounds.origin.x,
-            cy + kr,
-            nvg.rgba(255, 255, 255, 16),
-            nvg.rgba(0, 0, 0, 16),
-        );
-        vg.beginPath();
-        vg.circle(cx, cy, kr - 1);
-        vg.fillColor(nvg.rgba(40, 43, 48, 255));
-        vg.fill();
-        vg.fillPaint(knob);
-        vg.fill();
-
-        vg.beginPath();
-        vg.circle(cx, cy, kr - 0.5);
-        vg.strokeColor(nvg.rgba(0, 0, 0, 92));
-        vg.stroke();
+        vg.fontSize(h * 1.3);
+        vg.fillColor(nvg.rgba(255, 255, 255, 32));
+        vg.textAlign(.{ .horizontal = .center, .vertical = .middle });
+        _ = icon(x + w - h * 0.55, y + h * 0.55, .CircledCross);
     }
 
     fn drawEyes(x: f32, y: f32, w: f32, h: f32, mx: f32, my: f32, t: f32) void {
@@ -1119,103 +1228,6 @@ const Demo = struct {
         vg.beginPath();
         vg.roundedRect(x + w - 12 + 1, y + 4 + 1 + (h - 8 - scrollh) * u, 8 - 2, scrollh - 2, 2);
         vg.fillPaint(shadowPaint);
-        vg.fill();
-
-        vg.restore();
-    }
-
-    fn drawColorwheel(x: f32, y: f32, w: f32, h: f32, t: f32) void {
-        const hue = @sin(t * 0.12);
-        var paint: nvg.Paint = undefined;
-
-        vg.save();
-        vg.restore();
-
-        const cx = x + w * 0.5;
-        const cy = y + h * 0.5;
-        const r1 = (if (w < h) w else h) * 0.5 - 5.0;
-        const r0 = r1 - 20.0;
-        const aeps = 0.5 / r1; // half a pixel arc length in radians (2pi cancels out).
-
-        var i: f32 = 0;
-        while (i < 6) : (i += 1) {
-            const a0 = i / 6.0 * math.pi * 2.0 - aeps;
-            const a1 = (i + 1.0) / 6.0 * math.pi * 2.0 + aeps;
-            vg.beginPath();
-            vg.arc(cx, cy, r0, a0, a1, .cw);
-            vg.arc(cx, cy, r1, a1, a0, .ccw);
-            vg.closePath();
-            const ax = cx + @cos(a0) * (r0 + r1) * 0.5;
-            const ay = cy + @sin(a0) * (r0 + r1) * 0.5;
-            const bx = cx + @cos(a1) * (r0 + r1) * 0.5;
-            const by = cy + @sin(a1) * (r0 + r1) * 0.5;
-            paint = vg.linearGradient(ax, ay, bx, by, nvg.hsla(a0 / (math.pi * 2.0), 1.0, 0.55, 255), nvg.hsla(a1 / (math.pi * 2.0), 1.0, 0.55, 255));
-            vg.fillPaint(paint);
-            vg.fill();
-        }
-
-        vg.beginPath();
-        vg.circle(cx, cy, r0 - 0.5);
-        vg.circle(cx, cy, r1 + 0.5);
-        vg.strokeColor(nvg.rgba(0, 0, 0, 64));
-        vg.strokeWidth(1.0);
-        vg.stroke();
-
-        // Selector
-        vg.save();
-        vg.translate(cx, cy);
-        vg.rotate(hue * math.pi * 2);
-
-        // Marker on
-        vg.strokeWidth(2.0);
-        vg.beginPath();
-        vg.rect(r0 - 1, -3, r1 - r0 + 2, 6);
-        vg.strokeColor(nvg.rgba(255, 255, 255, 192));
-        vg.stroke();
-
-        paint = vg.boxGradient(r0 - 3, -5, r1 - r0 + 6, 10, 2, 4, nvg.rgba(0, 0, 0, 128), nvg.rgba(0, 0, 0, 0));
-        vg.beginPath();
-        vg.rect(r0 - 2 - 10, -4 - 10, r1 - r0 + 4 + 20, 8 + 20);
-        vg.rect(r0 - 2, -4, r1 - r0 + 4, 8);
-        vg.pathWinding(nvg.Winding.solidity(.hole));
-        vg.fillPaint(paint);
-        vg.fill();
-
-        // Center triangle
-        const r = r0 - 6;
-        var ax = -0.5 * r; // @cos(120.0 / 180.0 * math.pi) * r;
-        var ay = 0.86602540378 * r; // @sin(120.0 / 180.0 * math.pi) * r;
-        const bx = -0.5 * r; // @cos(-120.0 / 180.0 * math.pi) * r;
-        const by = -0.86602540378 * r; // @sin(-120.0 / 180.0 * math.pi) * r;
-        vg.beginPath();
-        vg.moveTo(r, 0);
-        vg.lineTo(ax, ay);
-        vg.lineTo(bx, by);
-        vg.closePath();
-        paint = vg.linearGradient(r, 0, ax, ay, nvg.hsla(hue, 1.0, 0.5, 255), nvg.rgba(255, 255, 255, 255));
-        vg.fillPaint(paint);
-        vg.fill();
-        paint = vg.linearGradient((r + ax) * 0.5, (0 + ay) * 0.5, bx, by, nvg.rgba(0, 0, 0, 0), nvg.rgba(0, 0, 0, 255));
-        vg.fillPaint(paint);
-        vg.fill();
-        vg.strokeColor(nvg.rgba(0, 0, 0, 64));
-        vg.stroke();
-
-        // Select circle on triangle
-        ax = -0.5 * r * 0.3; // @cos(120.0 / 180.0 * math.pi) * r * 0.3;
-        ay = 0.86602540378 * r * 0.4; // @sin(120.0 / 180.0 * math.pi) * r * 0.4;
-        vg.strokeWidth(2.0);
-        vg.beginPath();
-        vg.circle(ax, ay, 5);
-        vg.strokeColor(nvg.rgba(255, 255, 255, 192));
-        vg.stroke();
-
-        paint = vg.radialGradient(ax, ay, 7, 9, nvg.rgba(0, 0, 0, 64), nvg.rgba(0, 0, 0, 0));
-        vg.beginPath();
-        vg.rect(ax - 20, ay - 20, 40, 40);
-        vg.circle(ax, ay, 7);
-        vg.pathWinding(nvg.Winding.solidity(.hole));
-        vg.fillPaint(paint);
         vg.fill();
 
         vg.restore();
