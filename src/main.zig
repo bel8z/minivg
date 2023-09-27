@@ -41,25 +41,47 @@ const image_files = [_][]const u8{
     @embedFile("assets/image11.jpg"),
     @embedFile("assets/image12.jpg"),
 };
-var images: [image_files.len]nvg.Image = undefined;
-var opts = packed struct {
+
+const App = struct {
+    // Demo stuff
     blowup: bool = false,
     premult: bool = false,
     dpi: bool = true,
     animations: bool = false,
     srgb: bool = false,
-}{};
+    images: [image_files.len]nvg.Image = undefined,
+    // FPS measurement
+    watch: Stopwatch = undefined,
+    elapsed: f32 = 0,
+    fps: PerfGraph = PerfGraph.init(.fps, "Frame Time"),
 
-// FPS measurement
+    fn start(self: *App) !void {
+        self.watch = try Stopwatch.start();
+        _ = self.update();
+    }
+
+    fn update(self: *App) f32 {
+        const t = @as(f32, @floatFromInt(self.watch.read())) / 1000_000_000.0;
+        const dt = t - app.elapsed;
+        app.elapsed = t;
+        self.fps.update(dt);
+        return dt;
+    }
+
+    fn draw(self: *App, viewport: Vec2, cursor: Mouse, pixel_size: f32) void {
+        vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
+
+        demo(cursor, viewport, self.images[0..], self.elapsed);
+        self.fps.draw(vg, 5, 5);
+
+        vg.endFrame();
+    }
+};
+
+var app = App{};
+
 const PerfGraph = @import("perf");
 const Stopwatch = std.time.Timer;
-var watch: Stopwatch = undefined;
-var elapsed: f32 = 0;
-var fps = PerfGraph.init(.fps, "Frame Time");
-
-fn readWatch() f32 {
-    return @as(f32, @floatFromInt(watch.read())) / 1000_000_000.0;
-}
 
 /// Mouse input
 const Mouse = struct {
@@ -78,15 +100,13 @@ const Mouse = struct {
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
 
+    try win32.setProcessDpiAware();
+    try app.start();
+
     if (build_opts.console) {
         _ = win32.AllocConsole();
         _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
     }
-
-    try win32.setProcessDpiAware();
-
-    watch = try Stopwatch.start();
-    elapsed = readWatch();
 
     // Init window
     const win_name = L(app_name);
@@ -155,11 +175,11 @@ pub fn main() anyerror!void {
     _ = vg.addFallbackFontId(bold, emoji);
 
     // Init demo stuff
-    for (&images, 0..) |*image, i| {
+    for (&app.images, 0..) |*image, i| {
         image.* = vg.createImageMem(image_files[i], .{});
     }
     defer {
-        for (images) |image| {
+        for (app.images) |image| {
             vg.deleteImage(image);
         }
     }
@@ -201,22 +221,17 @@ fn wndProc(
 
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
-                VK_SPACE => opts.blowup = !opts.blowup,
-                'P' => opts.premult = !opts.premult,
-                'D' => opts.dpi = !opts.dpi,
-                'A' => opts.animations = !opts.animations,
-                'F' => opts.srgb = !opts.srgb,
+                VK_SPACE => app.blowup = !app.blowup,
+                'P' => app.premult = !app.premult,
+                'D' => app.dpi = !app.dpi,
+                'A' => app.animations = !app.animations,
+                'F' => app.srgb = !app.srgb,
                 else => {},
             }
         },
         win32.WM_PAINT => {
-            // TODO (Matteo): Measure time
-            const t = readWatch();
-            const dt = t - elapsed;
-            elapsed = t;
-
             // DPI correction
-            const dpi = if (opts.dpi) win32.GetDpiForWindow(win) else 96;
+            const dpi = if (app.dpi) win32.GetDpiForWindow(win) else 96;
             const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
             // Fetch viewport and DPI information
@@ -240,24 +255,18 @@ fn wndProc(
                 },
             };
 
-            gl.option(.FRAMEBUFFER_SRGB, opts.srgb);
+            gl.option(.FRAMEBUFFER_SRGB, app.srgb);
 
             // Update and render
             gl.viewport(0, 0, viewport_rect.right, viewport_rect.bottom);
-            if (opts.premult) {
+            if (app.premult) {
                 gl.clearColor(0, 0, 0, 0);
             } else {
                 gl.clearColor(0.3, 0.3, 0.32, 1.0);
             }
             gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
 
-            vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
-
-            demo(cursor, viewport, t);
-            fps.update(dt);
-            fps.draw(vg, 5, 5);
-
-            vg.endFrame();
+            app.draw(viewport, cursor, pixel_size);
 
             // TODO: Painting code goes here
             const dc = win32.getDC(win) catch unreachable;
@@ -646,8 +655,8 @@ fn colorPicker(x: f32, y: f32, w: f32, h: f32, t: f32) void {
 }
 
 // Demo
-fn demo(m: Mouse, viewport: Vec2, t: f32) void {
-    if (opts.animations) {
+fn demo(m: Mouse, viewport: Vec2, images: []const nvg.Image, t: f32) void {
+    if (app.animations) {
         drawEyes(viewport.x - 250, 50, 150, 100, m.pos.x, m.pos.y, t);
         drawParagraph(viewport.x - 450, 50, 150, 100, m.pos.x, m.pos.y);
         drawGraph(0, viewport.y / 2, viewport.x, viewport.y / 2, t);
@@ -666,7 +675,7 @@ fn demo(m: Mouse, viewport: Vec2, t: f32) void {
     }
 
     vg.save();
-    if (opts.blowup) {
+    if (app.blowup) {
         vg.rotate(@sin(t * 0.3) * 5.0 / 180.0 * math.pi);
         vg.scale(2.0, 2.0);
     }
@@ -703,7 +712,7 @@ fn demo(m: Mouse, viewport: Vec2, t: f32) void {
     _ = button(.None, "Cancel", rect(x + 170, y, 110, 28), nvg.rgba(0, 0, 0, 0), m);
 
     // Thumbnails box
-    drawThumbnails(365, popy - 30, 160, 300, images[0..], t);
+    drawThumbnails(365, popy - 30, 160, 300, images, t);
 
     vg.restore();
 }
@@ -1108,7 +1117,7 @@ fn drawSpinner(cx: f32, cy: f32, r: f32, t: f32) void {
     vg.restore();
 }
 
-fn drawThumbnails(x: f32, y: f32, w: f32, h: f32, imgs: []const nvg.Image, t: f32) void {
+fn drawThumbnails(x: f32, y: f32, w: f32, h: f32, images: []const nvg.Image, t: f32) void {
     const cornerRadius = 3.0;
     const thumb = 60.0;
     const arry = 30.5;
@@ -1140,9 +1149,9 @@ fn drawThumbnails(x: f32, y: f32, w: f32, h: f32, imgs: []const nvg.Image, t: f3
     vg.scissor(x, y, w, h);
     vg.translate(0, -(stackh - h) * u);
 
-    const dv = 1.0 / @as(f32, @floatFromInt(imgs.len - 1));
+    const dv = 1.0 / @as(f32, @floatFromInt(images.len - 1));
 
-    for (imgs, 0..) |image, i| {
+    for (images, 0..) |image, i| {
         var tx = x + 10;
         var ty = y + 10;
         tx += @as(f32, @floatFromInt(i % 2)) * (thumb + 10.0);
