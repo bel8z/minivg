@@ -9,27 +9,26 @@ const assert = std.debug.assert;
 const win32 = @import("win32.zig");
 const L = win32.L;
 
-// Custom libs
-const math = @import("math.zig");
-const Vec2 = math.Vec2(f32);
-const Rect = math.AlignedBox(f32);
-const rect = math.rect;
-const Ui = @import("ui.zig");
-
 // OpenGL stuff
 const wgl = @import("wgl.zig");
 const GL = @import("gl.zig");
 var gl: GL = undefined;
 
+const Api = @import("api.zig");
+const math = Api.math;
+const Vec2 = Api.Vec2;
+
 // NanoVG context & backend
-const nvg = @import("nanovg");
+const nvg = Api.nvg;
 const nvgl = @import("nvgl.zig");
 var vg: nvg = undefined;
 
-const App = @import("App.zig");
-const Mouse = App.Mouse;
+const App = Api.App;
+const Mouse = Api.Mouse;
 
+var api: Api = undefined;
 var app: *App = undefined;
+var opt = Api.Opts{};
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
@@ -108,10 +107,13 @@ pub fn main() anyerror!void {
     _ = vg.addFallbackFontId(sans, emoji);
     _ = vg.addFallbackFontId(bold, emoji);
 
+    const lib = try win32.LoadLibraryW(L("..\\lib\\libminivg.dll"));
+    const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
+    init_fn(&api);
+
     // Init app
-    app = try allocator.create(App);
-    try app.init(vg);
-    defer app.deinit(vg);
+    app = try api.init(allocator, vg);
+    defer api.deinit(app, allocator, vg);
 
     // Main loop
     _ = win32.showWindow(win, win32.SW_SHOWDEFAULT);
@@ -150,17 +152,17 @@ fn wndProc(
 
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
-                VK_SPACE => app.blowup = !app.blowup,
-                'P' => app.premult = !app.premult,
-                'D' => app.dpi = !app.dpi,
-                'A' => app.animations = !app.animations,
-                'F' => app.srgb = !app.srgb,
+                VK_SPACE => opt.blowup = !opt.blowup,
+                'P' => opt.premult = !opt.premult,
+                'D' => opt.dpi = !opt.dpi,
+                'A' => opt.animations = !opt.animations,
+                'F' => opt.srgb = !opt.srgb,
                 else => {},
             }
         },
         win32.WM_PAINT => {
             // DPI correction
-            const dpi = if (app.dpi) win32.GetDpiForWindow(win) else 96;
+            const dpi = if (opt.dpi) win32.GetDpiForWindow(win) else 96;
             const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
             // Fetch viewport and DPI information
@@ -184,18 +186,18 @@ fn wndProc(
                 },
             };
 
-            gl.option(.FRAMEBUFFER_SRGB, app.srgb);
+            gl.option(.FRAMEBUFFER_SRGB, opt.srgb);
 
             // Update and render
             gl.viewport(0, 0, viewport_rect.right, viewport_rect.bottom);
-            if (app.premult) {
+            if (opt.premult) {
                 gl.clearColor(0, 0, 0, 0);
             } else {
                 gl.clearColor(0.3, 0.3, 0.32, 1.0);
             }
             gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
 
-            _ = app.update(vg, viewport, cursor, pixel_size);
+            _ = api.update(app, vg, viewport, cursor, pixel_size, opt);
 
             // TODO: Painting code goes here
             const dc = win32.getDC(win) catch unreachable;

@@ -46,11 +46,9 @@ pub fn build(b: *std.build.Builder) void {
     exe.subsystem = .Windows;
     exe.addOptions("build_options", build_options);
     exe.addModule("nanovg", nvg);
-    exe.addModule("perf", perf);
     exe.linkSystemLibrary("opengl32");
     exe.linkLibC();
     exe.addIncludePath(.{ .path = nvg_path ++ "/src" });
-    exe.addIncludePath(.{ .path = nvg_path ++ "/examples" });
     exe.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
     exe.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
     exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
@@ -92,4 +90,31 @@ pub fn build(b: *std.build.Builder) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
+
+    // Library
+    const lib = b.addSharedLibrary(.{
+        .name = "libminivg",
+        // In this case the main source file is merely a path, however, in more
+        // complicated build scripts, this could be a generated file.
+        .root_source_file = .{ .path = "src/App.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
+    b.installArtifact(lib);
+
+    lib.addOptions("build_options", build_options);
+    lib.addModule("nanovg", nvg);
+    lib.addModule("perf", perf);
+    lib.linkLibC();
+    lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    lib.addIncludePath(.{ .path = nvg_path ++ "/examples" });
+    lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
+    lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
+    lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
+    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
+    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
 }

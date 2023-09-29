@@ -5,14 +5,16 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 
-// NanoVG
-const nvg = @import("nanovg");
-
-// Custom libs
-const math = @import("math.zig");
-const Vec2 = math.Vec2(f32);
+const Api = @import("api.zig");
+const nvg = Api.nvg;
+const Error = Api.Error;
+const Mouse = Api.Mouse;
+const math = Api.math;
+const Vec2 = Api.Vec2;
 const Rect = math.AlignedBox(f32);
 const rect = math.rect;
+
+const App = @This();
 
 // Demo stuff
 const image_files = [_][]const u8{
@@ -30,27 +32,7 @@ const image_files = [_][]const u8{
     @embedFile("assets/image12.jpg"),
 };
 
-pub const Mouse = struct {
-    pos: Vec2 = .{},
-    button: packed struct {
-        left: bool = false,
-        right: bool = false,
-        middle: bool = false,
-    } = .{},
-
-    pub fn click(mouse: Mouse) bool {
-        return (mouse.button.left or mouse.button.middle or mouse.button.right);
-    }
-};
-
-const App = @This();
-
 // Demo stuff
-blowup: bool = false,
-premult: bool = false,
-dpi: bool = true,
-animations: bool = false,
-srgb: bool = false,
 images: [image_files.len]nvg.Image = undefined,
 // FPS measurement
 watch: Stopwatch = undefined,
@@ -60,7 +42,15 @@ fps: PerfGraph = PerfGraph.init(.fps, "Frame Time"),
 const PerfGraph = @import("perf");
 const Stopwatch = std.time.Timer;
 
-pub fn init(self: *App, vg: nvg) !void {
+pub export fn initApi(api: *Api) void {
+    api.init = init;
+    api.deinit = deinit;
+    api.update = update;
+}
+
+pub fn init(allocator: std.mem.Allocator, vg: nvg) Error!*Api.App {
+    var self = try allocator.create(App);
+
     self.* = std.mem.zeroInit(App, .{});
     self.watch = try Stopwatch.start();
     _ = self.frame();
@@ -68,18 +58,30 @@ pub fn init(self: *App, vg: nvg) !void {
     for (&self.images, 0..) |*image, i| {
         image.* = vg.createImageMem(image_files[i], .{});
     }
+
+    return @ptrCast(self);
 }
 
-pub fn deinit(self: *App, vg: nvg) void {
+pub fn deinit(app: *Api.App, allocator: std.mem.Allocator, vg: nvg) void {
+    const self: *App = @ptrCast(@alignCast(app));
     for (self.images) |image| {
         vg.deleteImage(image);
     }
+    allocator.destroy(self);
 }
 
-pub fn update(self: *App, vg: nvg, viewport: Vec2, cursor: Mouse, pixel_size: f32) f32 {
+pub fn update(
+    app: *Api.App,
+    vg: nvg,
+    viewport: Vec2,
+    cursor: Mouse,
+    pixel_size: f32,
+    opts: Api.Opts,
+) f32 {
+    const self: *App = @ptrCast(@alignCast(app));
     const dt = self.frame();
     vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
-    self.demo(vg, cursor, viewport, self.images[0..], self.elapsed);
+    demo(vg, cursor, viewport, self.images[0..], self.elapsed, opts);
     self.fps.update(dt);
     self.fps.draw(vg, 5, 5);
     vg.endFrame();
@@ -93,8 +95,15 @@ fn frame(self: *App) f32 {
     return dt;
 }
 
-fn demo(self: *App, vg: nvg, m: Mouse, viewport: Vec2, images: []const nvg.Image, t: f32) void {
-    if (self.animations) {
+fn demo(
+    vg: nvg,
+    m: Mouse,
+    viewport: Vec2,
+    images: []const nvg.Image,
+    t: f32,
+    opts: Api.Opts,
+) void {
+    if (opts.animations) {
         drawEyes(vg, viewport.x - 250, 50, 150, 100, m.pos.x, m.pos.y, t);
         drawParagraph(vg, viewport.x - 450, 50, 150, 100, m.pos.x, m.pos.y);
         drawGraph(vg, 0, viewport.y / 2, viewport.x, viewport.y / 2, t);
@@ -113,7 +122,7 @@ fn demo(self: *App, vg: nvg, m: Mouse, viewport: Vec2, images: []const nvg.Image
     }
 
     vg.save();
-    if (self.blowup) {
+    if (opts.blowup) {
         vg.rotate(@sin(t * 0.3) * 5.0 / 180.0 * math.pi);
         vg.scale(2.0, 2.0);
     }
