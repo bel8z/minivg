@@ -107,7 +107,7 @@ pub fn main() anyerror!void {
     _ = vg.addFallbackFontId(sans, emoji);
     _ = vg.addFallbackFontId(bold, emoji);
 
-    const lib = try win32.LoadLibraryW(L("..\\lib\\libminivg.dll"));
+    const lib = try win32.LoadLibraryW(L("..\\lib\\app.dll"));
     const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
     init_fn(&api);
 

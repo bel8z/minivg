@@ -17,6 +17,7 @@ pub fn build(b: *std.build.Builder) void {
     const build_options = b.addOptions();
     build_options.addOption(bool, "console", console);
 
+    // Dependency packages
     const nvg_path = "deps/nanovg";
     const nvg = b.addModule("nanovg", .{ .source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
     const perf = b.addModule("perf", .{
@@ -24,11 +25,47 @@ pub fn build(b: *std.build.Builder) void {
         .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
     });
 
+    // Common C library (basically NanoVG's C dependencies)
+    const lib = b.addStaticLibrary(.{
+        .name = "lib",
+        .root_source_file = null,
+        .target = target,
+        .optimize = optimize,
+    });
     const c_flags = .{
         "-DFONS_NO_STDIO",
         "-DSTBI_NO_STDIO",
     };
 
+    lib.linkLibC();
+    lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
+    lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
+    lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
+    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
+    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
+
+    // Application shared library
+    const app = b.addSharedLibrary(.{
+        .name = "app",
+        // In this case the main source file is merely a path, however, in more
+        // complicated build scripts, this could be a generated file.
+        .root_source_file = .{ .path = "src/App.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
+    b.installArtifact(app);
+
+    app.addOptions("build_options", build_options);
+    app.addModule("nanovg", nvg);
+    app.addModule("perf", perf);
+    app.linkLibrary(lib);
+
+    // Main executable
     const exe = b.addExecutable(.{
         .name = "minivg",
         // In this case the main source file is merely a path, however, in more
@@ -47,13 +84,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.addOptions("build_options", build_options);
     exe.addModule("nanovg", nvg);
     exe.linkSystemLibrary("opengl32");
-    exe.linkLibC();
-    exe.addIncludePath(.{ .path = nvg_path ++ "/src" });
-    exe.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
-    exe.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
-    exe.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
-    exe.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
+    exe.linkLibrary(lib);
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
@@ -90,31 +121,4 @@ pub fn build(b: *std.build.Builder) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
-
-    // Library
-    const lib = b.addSharedLibrary(.{
-        .name = "libminivg",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/App.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(lib);
-
-    lib.addOptions("build_options", build_options);
-    lib.addModule("nanovg", nvg);
-    lib.addModule("perf", perf);
-    lib.linkLibC();
-    lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
-    lib.addIncludePath(.{ .path = nvg_path ++ "/examples" });
-    lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
-    lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
-    lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
 }
