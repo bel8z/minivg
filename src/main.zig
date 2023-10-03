@@ -118,31 +118,50 @@ pub fn main() anyerror!void {
     _ = win32.showWindow(win, win32.SW_SHOWDEFAULT);
     try win32.updateWindow(win);
 
+    var loop_state: enum { Idle, Update, Quit } = .Idle;
+    var vsync = !opt.steady; // Force first update
     var msg: win32.MSG = undefined;
 
-    // Force first update
-    var vsync = !opt.steady;
-
-    loop: while (true) {
+    while (loop_state != .Quit) {
         if (vsync != opt.steady) {
             try wgl.setSwapInterval(@intFromBool(opt.steady));
             vsync = opt.steady;
         }
 
         if (vsync) {
-            while (try win32.peekMessageW(&msg, null, 0, 0, win32.PM_REMOVE)) {
-                if (msg.message == win32.WM_QUIT) break :loop;
-                _ = win32.translateMessage(&msg);
-                _ = win32.dispatchMessageW(&msg);
-            }
-            updateAndRender(win, dc);
+            loop_state = .Update;
         } else {
-            win32.getMessageW(&msg, null, 0, 0) catch |err| switch (err) {
-                error.Quit => break :loop,
-                else => return err,
-            };
+            try win32.waitMessage();
+            loop_state = .Idle;
+        }
+
+        // Process all input
+        while (try win32.peekMessageW(&msg, null, 0, 0, win32.PM_REMOVE)) {
             _ = win32.translateMessage(&msg);
             _ = win32.dispatchMessageW(&msg);
+
+            switch (msg.message) {
+                win32.WM_QUIT => {
+                    loop_state = .Quit;
+                    break;
+                },
+                win32.WM_PAINT => {
+                    // NOTE (Matteo): This must be honored with Begin/EndPaint,
+                    // otherwise Windows keeps sending it. To avoid scattered
+                    // logic, rendering is done in the main loop only, leaving
+                    // WndProc to handle input and "service" messages
+                    loop_state = .Update;
+                    break;
+                },
+                else => {},
+            }
+        }
+
+        if (loop_state == .Update) {
+            var ps: win32.PAINTSTRUCT = undefined;
+            const paint_dc = win32.beginPaint(win, &ps) catch unreachable;
+            defer win32.endPaint(win, &ps) catch unreachable;
+            updateAndRender(win, paint_dc);
         }
     }
 }
@@ -160,12 +179,10 @@ fn wndProc(
                 wgl.deleteContext(context) catch unreachable;
             }
             win32.PostQuitMessage(0);
-            return 0;
         },
         win32.WM_KEYUP => {
             const VK_ESCAPE = 0x1B;
             const VK_SPACE = 0x20;
-            var handled: bool = true;
 
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
@@ -175,33 +192,22 @@ fn wndProc(
                 'A' => opt.animations = !opt.animations,
                 'F' => opt.srgb = !opt.srgb,
                 'S' => opt.steady = !opt.steady,
-                else => handled = false,
+                else => {},
             }
 
-            if (handled) {
-                if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
-                return 0;
-            }
+            if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
         },
         win32.WM_MOUSEMOVE => {
             if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
-            return 0;
         },
         win32.WM_PAINT => {
-            // NOTE (Matteo): WM_PAINT is always honored (otherwise Windows keeps
-            // pumping it), but actual update is handled here only in "reactive"
-            //  mode (steady update disabled)
-            var ps: win32.PAINTSTRUCT = undefined;
-            const dc = win32.beginPaint(win, &ps) catch unreachable;
-            defer win32.endPaint(win, &ps) catch unreachable;
-            if (!opt.steady) updateAndRender(win, dc);
-            return 0;
+            // NOTE (Matteo): Just marking the event has being handled, see
+            // main loop for actual management.
         },
-
-        else => {},
+        else => return win32.defWindowProcW(win, msg, wparam, lparam),
     }
 
-    return win32.defWindowProcW(win, msg, wparam, lparam);
+    return 0;
 }
 
 inline fn destroy(win: win32.HWND) void {

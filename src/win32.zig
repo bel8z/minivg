@@ -13,7 +13,7 @@ pub usingnamespace win32.user32;
 pub const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 /// Returns the HINSTANCE corresponding to the process executable
-pub fn getCurrentInstance() win32.HINSTANCE {
+pub inline fn getCurrentInstance() win32.HINSTANCE {
     return @as(
         win32.HINSTANCE,
         @ptrCast(win32.kernel32.GetModuleHandleW(null) orelse unreachable),
@@ -64,7 +64,7 @@ extern "user32" fn GetAsyncKeyState(
     vkey: c_int,
 ) callconv(win32.WINAPI) i16;
 
-pub fn isKeyPressed(vkey: c_int) bool {
+pub inline fn isKeyPressed(vkey: c_int) bool {
     const word: u16 = @bitCast(GetAsyncKeyState(vkey));
     return ((word & 0x8000) != 0);
 }
@@ -86,6 +86,13 @@ pub extern "user32" fn ScreenToClient(
     point: *win32.POINT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
+extern "user32" fn WaitMessage() callconv(win32.WINAPI) win32.BOOL;
+
+pub inline fn waitMessage() !void {
+    const res = WaitMessage();
+    if (res == 0) return error.Unexpected;
+}
+
 //=== Command line ===//
 
 pub fn getArgs() []win32.LPWSTR {
@@ -95,7 +102,7 @@ pub fn getArgs() []win32.LPWSTR {
     return argv[0..@as(usize, @intCast(argc))];
 }
 
-pub fn freeArgs(args: []win32.LPWSTR) void {
+pub inline fn freeArgs(args: []win32.LPWSTR) void {
     win32.LocalFree(@as(win32.HLOCAL, @ptrCast(args.ptr)));
 }
 
@@ -194,11 +201,11 @@ pub const CursorId = enum(u16) {
     No = 32648,
 };
 
-pub fn getDefaultCursor() win32.HCURSOR {
+pub inline fn getDefaultCursor() win32.HCURSOR {
     return getStandardCursor(.Arrow) catch unreachable;
 }
 
-pub fn getStandardCursor(id: CursorId) Error!win32.HCURSOR {
+pub inline fn getStandardCursor(id: CursorId) Error!win32.HCURSOR {
     const name = @as(win32.LPCWSTR, @ptrFromInt(@intFromEnum(id)));
     return LoadCursorW(null, name) orelse error.Unexpected;
 }
@@ -229,7 +236,7 @@ pub const MenuItem = union(enum) {
     OwnerDraw: struct { id: u32, data: *anyopaque },
 };
 
-pub fn createMenu() Error!win32.HMENU {
+pub inline fn createMenu() Error!win32.HMENU {
     return CreateMenu() orelse error.Unexpected;
 }
 
@@ -450,7 +457,7 @@ pub const OPENFILENAMEW = extern struct {
     FlagsEx: u32 = 0,
 };
 
-pub fn getOpenFileName(ofn: *OPENFILENAMEW) Error!bool {
+pub inline fn getOpenFileName(ofn: *OPENFILENAMEW) Error!bool {
     std.debug.assert(ofn.lStructSize == @sizeOf(OPENFILENAMEW));
 
     if (GetOpenFileNameW(ofn) == win32.TRUE) return true;
@@ -516,7 +523,7 @@ pub const IStream = extern struct {
     };
 };
 
-pub fn createMemStream(mem: []const u8) !*IStream {
+pub inline fn createMemStream(mem: []const u8) !*IStream {
     return SHCreateMemStream(
         mem.ptr,
         @as(win32.UINT, @intCast(mem.len)),
@@ -528,7 +535,7 @@ extern "shlwapi" fn SHCreateMemStream(
     cbInit: win32.UINT,
 ) callconv(win32.WINAPI) ?*IStream;
 
-//=== COM stuff ===//
+//=== Console ===//
 
 pub extern "kernel32" fn AttachConsole(dwProcessId: u32) callconv(win32.WINAPI) win32.BOOL;
 pub extern "kernel32" fn AllocConsole() callconv(win32.WINAPI) win32.BOOL;
