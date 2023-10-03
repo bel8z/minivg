@@ -86,7 +86,6 @@ pub fn main() anyerror!void {
     // TODO (Matteo): Investigate performance issues with 3.3
     const ctx = try wgl.createContext(dc, .{ .v_major = 3, .v_minor = 1 });
     _ = try wgl.makeCurrent(dc, ctx);
-    try wgl.setSwapInterval(1);
 
     // Init OpenGL
     try gl.init();
@@ -121,14 +120,30 @@ pub fn main() anyerror!void {
 
     var msg: win32.MSG = undefined;
 
-    while (true) {
-        win32.getMessageW(&msg, null, 0, 0) catch |err| switch (err) {
-            error.Quit => break,
-            else => return err,
-        };
+    // Force first update
+    var vsync = !opt.steady;
 
-        _ = win32.translateMessage(&msg);
-        _ = win32.dispatchMessageW(&msg);
+    loop: while (true) {
+        if (vsync != opt.steady) {
+            try wgl.setSwapInterval(@intFromBool(opt.steady));
+            vsync = opt.steady;
+        }
+
+        if (vsync) {
+            while (try win32.peekMessageW(&msg, null, 0, 0, win32.PM_REMOVE)) {
+                if (msg.message == win32.WM_QUIT) break :loop;
+                _ = win32.translateMessage(&msg);
+                _ = win32.dispatchMessageW(&msg);
+            }
+            updateAndRender(win, dc);
+        } else {
+            win32.getMessageW(&msg, null, 0, 0) catch |err| switch (err) {
+                error.Quit => break :loop,
+                else => return err,
+            };
+            _ = win32.translateMessage(&msg);
+            _ = win32.dispatchMessageW(&msg);
+        }
     }
 }
 
@@ -145,10 +160,12 @@ fn wndProc(
                 wgl.deleteContext(context) catch unreachable;
             }
             win32.PostQuitMessage(0);
+            return 0;
         },
         win32.WM_KEYUP => {
             const VK_ESCAPE = 0x1B;
             const VK_SPACE = 0x20;
+            var handled: bool = true;
 
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
@@ -157,60 +174,78 @@ fn wndProc(
                 'D' => opt.dpi = !opt.dpi,
                 'A' => opt.animations = !opt.animations,
                 'F' => opt.srgb = !opt.srgb,
-                else => {},
+                'S' => opt.steady = !opt.steady,
+                else => handled = false,
             }
+
+            if (handled) {
+                if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
+                return 0;
+            }
+        },
+        win32.WM_MOUSEMOVE => {
+            if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
+            return 0;
         },
         win32.WM_PAINT => {
-            // DPI correction
-            const dpi = if (opt.dpi) win32.GetDpiForWindow(win) else 96;
-            const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
-
-            // Fetch viewport and DPI information
-            var viewport_rect: win32.RECT = undefined;
-            _ = win32.GetClientRect(win, &viewport_rect);
-            assert(viewport_rect.left == 0 and viewport_rect.top == 0);
-            if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return 0;
-            const viewport = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size);
-
-            // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
-            // pixel coordinates
-            var cursor_pt: win32.POINT = undefined;
-            _ = win32.GetCursorPos(&cursor_pt);
-            _ = win32.ScreenToClient(win, &cursor_pt);
-            const cursor = Mouse{
-                .pos = Vec2.fromInt(cursor_pt).mul(pixel_size),
-                .button = .{
-                    .left = win32.isKeyPressed(0x01), // VK_LBUTTON
-                    .right = win32.isKeyPressed(0x02), // VK_RBUTTON
-                    .middle = win32.isKeyPressed(0x04), // VK_MBUTTON
-                },
-            };
-
-            gl.option(.FRAMEBUFFER_SRGB, opt.srgb);
-
-            // Update and render
-            gl.viewport(0, 0, viewport_rect.right, viewport_rect.bottom);
-            if (opt.premult) {
-                gl.clearColor(0, 0, 0, 0);
-            } else {
-                gl.clearColor(0.3, 0.3, 0.32, 1.0);
-            }
-            gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
-
-            _ = api.update(app, vg, viewport, cursor, pixel_size, opt);
-
-            // TODO: Painting code goes here
-            const dc = win32.getDC(win) catch unreachable;
-            defer _ = win32.releaseDC(win, dc);
-            wgl.swapBuffers(dc) catch unreachable;
+            // NOTE (Matteo): WM_PAINT is always honored (otherwise Windows keeps
+            // pumping it), but actual update is handled here only in "reactive"
+            //  mode (steady update disabled)
+            var ps: win32.PAINTSTRUCT = undefined;
+            const dc = win32.beginPaint(win, &ps) catch unreachable;
+            defer win32.endPaint(win, &ps) catch unreachable;
+            if (!opt.steady) updateAndRender(win, dc);
+            return 0;
         },
 
-        else => return win32.defWindowProcW(win, msg, wparam, lparam),
+        else => {},
     }
 
-    return 0;
+    return win32.defWindowProcW(win, msg, wparam, lparam);
 }
 
 inline fn destroy(win: win32.HWND) void {
     win32.destroyWindow(win) catch unreachable;
+}
+
+fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
+    // DPI correction
+    const dpi = if (opt.dpi) win32.GetDpiForWindow(win) else 96;
+    const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
+
+    // Fetch viewport and DPI information
+    var viewport_rect: win32.RECT = undefined;
+    _ = win32.GetClientRect(win, &viewport_rect);
+    assert(viewport_rect.left == 0 and viewport_rect.top == 0);
+    if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return;
+    const viewport = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size);
+
+    // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
+    // pixel coordinates
+    var cursor_pt: win32.POINT = undefined;
+    _ = win32.GetCursorPos(&cursor_pt);
+    _ = win32.ScreenToClient(win, &cursor_pt);
+    const cursor = Mouse{
+        .pos = Vec2.fromInt(cursor_pt).mul(pixel_size),
+        .button = .{
+            .left = win32.isKeyPressed(0x01), // VK_LBUTTON
+            .right = win32.isKeyPressed(0x02), // VK_RBUTTON
+            .middle = win32.isKeyPressed(0x04), // VK_MBUTTON
+        },
+    };
+
+    gl.option(.FRAMEBUFFER_SRGB, opt.srgb);
+
+    // Update and render
+    gl.viewport(0, 0, viewport_rect.right, viewport_rect.bottom);
+    if (opt.premult) {
+        gl.clearColor(0, 0, 0, 0);
+    } else {
+        gl.clearColor(0.3, 0.3, 0.32, 1.0);
+    }
+    gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
+
+    _ = api.update(app, vg, viewport, cursor, pixel_size, opt);
+
+    wgl.swapBuffers(dc) catch unreachable;
 }

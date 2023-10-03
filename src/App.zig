@@ -80,10 +80,45 @@ pub fn update(
 ) f32 {
     const self: *App = @ptrCast(@alignCast(app));
     const dt = self.frame();
+
     vg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
+
+    // Draw options
+    {
+        // TODO (Matteo): Improve / cleanup
+        vg.save();
+        defer vg.restore();
+
+        vg.fontSize(15.0);
+        vg.fontFace("sans");
+        vg.fillColor(nvg.rgba(255, 255, 255, 128));
+        vg.textAlign(.{ .horizontal = .left, .vertical = .top });
+
+        var bounds: [4]f32 = undefined;
+        _ = vg.textBounds(0, 0, "long_option_name: off", &bounds);
+        const h = bounds[3] - bounds[1];
+        const x = viewport.x - bounds[2] - bounds[0];
+        var y: f32 = 0;
+
+        const opt_fields = std.meta.fields(@TypeOf(opts));
+        inline for (opt_fields) |field| {
+            assert(field.type == bool);
+            vg.textAlign(.{ .horizontal = .left, .vertical = .top });
+            var adv = vg.text(x, y, field.name);
+            adv = vg.text(adv, y, ":");
+            vg.textAlign(.{ .horizontal = .right, .vertical = .top });
+            _ = vg.text(viewport.x, y, if (@field(opts, field.name)) "ON" else "OFF");
+            y += h;
+        }
+    }
+
+    // Draw demo stuff
     demo(vg, cursor, viewport, self.images[0..], self.elapsed, opts);
+
+    // Draw FPS graph
     self.fps.update(dt);
     self.fps.draw(vg, 5, 5);
+
     vg.endFrame();
     return dt;
 }
