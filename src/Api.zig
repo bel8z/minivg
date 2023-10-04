@@ -33,6 +33,7 @@ pub const Opts = packed struct {
     animations: bool = false,
     srgb: bool = false,
     steady: bool = false,
+    fps_percent: bool = false,
 };
 
 init: *const fn (allocator: std.mem.Allocator, vg: nvg) Error!*App,

@@ -17,15 +17,10 @@ pub fn build(b: *std.build.Builder) void {
     const build_options = b.addOptions();
     build_options.addOption(bool, "console", console);
 
-    // Dependency packages
+    // NanoVG
     const nvg_path = "deps/nanovg";
     const nvg = b.addModule("nanovg", .{ .source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
-    const perf = b.addModule("perf", .{
-        .source_file = .{ .path = nvg_path ++ "/examples/perf.zig" },
-        .dependencies = &.{.{ .module = nvg, .name = "nanovg" }},
-    });
 
-    // Common C library (basically NanoVG's C dependencies)
     const lib = b.addStaticLibrary(.{
         .name = "lib",
         .root_source_file = null,
@@ -54,16 +49,10 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(app);
-
     app.addOptions("build_options", build_options);
     app.addModule("nanovg", nvg);
-    app.addModule("perf", perf);
     app.linkLibrary(lib);
+    b.installArtifact(app);
 
     // Main executable
     const exe = b.addExecutable(.{
@@ -74,17 +63,15 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(exe);
-
     exe.subsystem = .Windows;
     exe.addOptions("build_options", build_options);
     exe.addModule("nanovg", nvg);
     exe.linkSystemLibrary("opengl32");
     exe.linkLibrary(lib);
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
+    b.installArtifact(exe);
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish

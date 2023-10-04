@@ -8,6 +8,8 @@ const assert = std.debug.assert;
 // Windows stuff
 const win32 = @import("win32.zig");
 const L = win32.L;
+const VK_ESCAPE = 0x1B;
+const VK_SPACE = 0x20;
 
 // OpenGL stuff
 const wgl = @import("wgl.zig");
@@ -181,17 +183,15 @@ fn wndProc(
             win32.PostQuitMessage(0);
         },
         win32.WM_KEYUP => {
-            const VK_ESCAPE = 0x1B;
-            const VK_SPACE = 0x20;
-
             switch (wparam) {
                 VK_ESCAPE => destroy(win),
-                VK_SPACE => opt.blowup = !opt.blowup,
+                'B' => opt.blowup = !opt.blowup,
                 'P' => opt.premult = !opt.premult,
                 'D' => opt.dpi = !opt.dpi,
                 'A' => opt.animations = !opt.animations,
-                'F' => opt.srgb = !opt.srgb,
+                'R' => opt.srgb = !opt.srgb,
                 'S' => opt.steady = !opt.steady,
+                'F' => opt.fps_percent = !opt.fps_percent,
                 else => {},
             }
 

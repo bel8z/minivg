@@ -4,17 +4,19 @@ const build_opts = @import("build_options");
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
+const Stopwatch = std.time.Timer;
 
 const Api = @import("api.zig");
 const nvg = Api.nvg;
 const Error = Api.Error;
 const Mouse = Api.Mouse;
+
 const math = Api.math;
 const Vec2 = Api.Vec2;
 const Rect = math.AlignedBox(f32);
 const rect = math.rect;
 
-const App = @This();
+const PerfGraph = @import("PerfGraph.zig");
 
 // Demo stuff
 const image_files = [_][]const u8{
@@ -37,10 +39,9 @@ images: [image_files.len]nvg.Image = undefined,
 // FPS measurement
 watch: Stopwatch = undefined,
 elapsed: f32 = 0,
-fps: PerfGraph = PerfGraph.init(.fps, "Frame Time"),
+fps: PerfGraph = PerfGraph.init("Frame Time"),
 
-const PerfGraph = @import("perf");
-const Stopwatch = std.time.Timer;
+const App = @This();
 
 pub export fn initApi(api: *Api) void {
     api.init = init;
@@ -117,7 +118,7 @@ pub fn update(
 
     // Draw FPS graph
     self.fps.update(dt);
-    self.fps.draw(vg, 5, 5);
+    self.fps.draw(vg, 5, 5, if (opts.fps_percent) .percent else .fps);
 
     vg.endFrame();
     return dt;
