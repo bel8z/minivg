@@ -42,7 +42,7 @@ pub fn build(b: *std.build.Builder) void {
 
     // Application shared library
     const app = b.addSharedLibrary(.{
-        .name = "app",
+        .name = std.fmt.allocPrint(b.allocator, "app-{}", .{std.time.timestamp()}) catch unreachable,
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
         .root_source_file = .{ .path = "src/App.zig" },

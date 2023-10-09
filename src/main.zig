@@ -108,9 +108,10 @@ pub fn main() anyerror!void {
     _ = vg.addFallbackFontId(sans, emoji);
     _ = vg.addFallbackFontId(bold, emoji);
 
-    const lib = try win32.LoadLibraryW(L("..\\lib\\app.dll"));
-    const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
-    init_fn(&api);
+    var ts = mostRecentLib();
+    if (ts < 0) return error.Unexpected;
+    var lib = try loadLib(ts);
+    try initApi(&api, lib);
 
     // Init app
     app = try api.init(allocator, vg);
@@ -125,6 +126,16 @@ pub fn main() anyerror!void {
     var msg: win32.MSG = undefined;
 
     while (loop_state != .Quit) {
+        var most_recent = mostRecentLib();
+        if (most_recent < 0) return error.Unexpected;
+
+        if (most_recent > ts) {
+            // TODO (Matteo): Unload
+            ts = most_recent;
+            lib = try loadLib(ts);
+            try initApi(&api, lib);
+        }
+
         if (vsync != opt.steady) {
             try wgl.setSwapInterval(@intFromBool(opt.steady));
             vsync = opt.steady;
@@ -254,4 +265,50 @@ fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
     _ = api.update(app, vg, viewport, cursor, pixel_size, opt);
 
     wgl.swapBuffers(dc) catch unreachable;
+}
+
+// TODO (Matteo): Cleanup
+// Hot-reload management
+
+fn initApi(api_: *Api, lib: win32.HMODULE) !void {
+    const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
+    init_fn(api_);
+}
+
+fn loadLib(timestamp: i64) !win32.HMODULE {
+    var utf8: [256]u8 = undefined;
+    var utf16: [256]u16 = undefined;
+
+    const name = try std.fmt.bufPrint(&utf8, "..\\lib\\app-{}.dll", .{timestamp});
+    const len = try std.unicode.utf8ToUtf16Le(&utf16, name);
+    utf16[len] = 0;
+
+    return win32.LoadLibraryW(utf16[0..len :0]);
+}
+
+fn mostRecentLib() i64 {
+    var result: i64 = -1;
+
+    const dir = std.fs.cwd().openIterableDir(
+        "..\\lib",
+        .{ .access_sub_paths = false, .no_follow = true },
+    ) catch unreachable;
+
+    var iter = dir.iterateAssumeFirstIteration();
+    while (true) {
+        const maybe = iter.next() catch unreachable;
+        const entry = maybe orelse break;
+        if (getLibTimestamp(entry.name)) |timestamp| {
+            if (timestamp > result) result = timestamp;
+        }
+    }
+
+    return result;
+}
+
+fn getLibTimestamp(filename: []const u8) ?i64 {
+    const start = std.ascii.indexOfIgnoreCase(filename, "app-") orelse return null;
+    const end = std.ascii.indexOfIgnoreCase(filename, ".dll") orelse return null;
+    const buf = filename[start + 4 .. end];
+    return std.fmt.parseInt(i64, buf, 10) catch null;
 }
