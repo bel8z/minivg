@@ -39,7 +39,7 @@ images: [image_files.len]nvg.Image = undefined,
 // FPS measurement
 watch: Stopwatch = undefined,
 elapsed: f32 = 0,
-fps: PerfGraph = PerfGraph.init("Frame Time"),
+fps: PerfGraph = undefined,
 
 const App = @This();
 
@@ -59,6 +59,10 @@ pub fn init(allocator: std.mem.Allocator, vg: nvg) Error!*Api.App {
     for (&self.images, 0..) |*image, i| {
         image.* = vg.createImageMem(image_files[i], .{});
     }
+
+    // NOTE (Matteo): Name is allocated because static strings are
+    // not friendly to hot reloading
+    self.fps = PerfGraph.init(try allocator.dupe(u8, "Frame Time"));
 
     return @ptrCast(self);
 }
