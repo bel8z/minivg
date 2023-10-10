@@ -33,6 +33,14 @@ var api: Api = undefined;
 var app: *App = undefined;
 var opt = Api.Opts{};
 
+fn print(
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    std.debug.print(format, args);
+    std.debug.print("\n", .{});
+}
+
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
     const allocator = std.heap.page_allocator;
@@ -40,11 +48,19 @@ pub fn main() anyerror!void {
     try win32.setProcessDpiAware();
 
     if (build_opts.console) {
-        _ = win32.AllocConsole();
-        _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
+        if (win32.AttachConsole(std.math.maxInt(u32)) == win32.FALSE) {
+            _ = win32.AllocConsole();
+            _ = win32.SetConsoleTitleW(L(app_name ++ " - Debug console"));
+        }
     }
 
+    var buf: [1024]u8 = undefined;
+    print("Startup", .{});
+    print("Working directory; {s}", .{std.fs.cwd().realpath(".", &buf) catch unreachable});
+
     // Init window
+    print("Creating window...", .{});
+
     const win_name = L(app_name);
 
     const win_class = win32.WNDCLASSEXW{
@@ -81,19 +97,25 @@ pub fn main() anyerror!void {
         null,
     );
 
-    // Init GL context
-    _ = try wgl.init();
-
     const dc = try win32.getDC(win);
     defer _ = win32.releaseDC(win, dc);
+
+    print("Creating window...Done", .{});
+
+    // Init OpenGL
+    print("Initializing OpenGL...", .{});
+
+    _ = try wgl.init();
     // TODO (Matteo): Investigate performance issues with 3.3
     const ctx = try wgl.createContext(dc, .{ .v_major = 3, .v_minor = 1 });
     _ = try wgl.makeCurrent(dc, ctx);
-
-    // Init OpenGL
     try gl.init();
 
+    print("Initializing OpenGL...Done", .{});
+
     // Init NanoVG context
+    print("Initializing NanoVG...", .{});
+
     vg = try nvgl.init(&gl, allocator, .{
         .antialias = true,
         .stencil_strokes = false,
@@ -101,7 +123,11 @@ pub fn main() anyerror!void {
     });
     defer vg.deinit();
 
+    print("Initializing NanoVG...Done", .{});
+
     // Init fonts
+    print("Loading fonts...", .{});
+
     _ = vg.createFontMem("icons", @embedFile("assets/entypo.ttf"));
     const sans = vg.createFontMem("sans", @embedFile("assets/Roboto-Regular.ttf"));
     const bold = vg.createFontMem("sans-bold", @embedFile("assets/Roboto-Bold.ttf"));
@@ -109,12 +135,20 @@ pub fn main() anyerror!void {
     _ = vg.addFallbackFontId(sans, emoji);
     _ = vg.addFallbackFontId(bold, emoji);
 
+    print("Loading fonts...Done", .{});
+
     // Init app
+    print("Loading application...", .{});
+
     var loader = try ApiLoader.init(&api);
     app = try api.init(allocator, vg);
     defer api.deinit(app, allocator, vg);
 
+    print("Loading application...Done", .{});
+
     // Main loop
+    print("Enter main loop", .{});
+
     _ = win32.showWindow(win, win32.SW_SHOWDEFAULT);
     try win32.updateWindow(win);
 

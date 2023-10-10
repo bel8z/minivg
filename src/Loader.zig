@@ -1,5 +1,3 @@
-const build_opts = @import("build_options");
-
 // Std stuff
 const std = @import("std");
 const builtin = @import("builtin");
@@ -20,19 +18,29 @@ timestamp: i64 = -1,
 pub fn init(api_: *Api) !Loader {
     var self = Loader{
         .dir = try std.fs.cwd().openIterableDir(
-            "..\\lib",
+            "../lib",
             .{ .access_sub_paths = false, .no_follow = true },
         ),
     };
 
-    const updated = try self.updateInternal(api_);
-    assert(updated);
+    if (builtin.mode == .Debug) {
+        const updated = try self.updateInternal(api_);
+        assert(updated);
+    } else {
+        const lib = try win32.LoadLibraryW(L("../lib/app.dll"));
+        const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
+        init_fn(api_);
+        self.lib = lib;
+    }
 
     return self;
 }
 
-pub fn update(self: *Loader, api_: *Api) bool {
-    return self.updateInternal(api_) catch false;
+pub inline fn update(self: *Loader, api_: *Api) bool {
+    return if (builtin.mode == .Debug)
+        self.updateInternal(api_) catch false
+    else
+        true;
 }
 
 fn updateInternal(self: *Loader, api_: *Api) !bool {
@@ -73,7 +81,7 @@ fn loadLib(timestamp: i64) !win32.HMODULE {
     var utf8: [256]u8 = undefined;
     var utf16: [256]u16 = undefined;
 
-    const name = try std.fmt.bufPrint(&utf8, "..\\lib\\app-{}.dll", .{timestamp});
+    const name = try std.fmt.bufPrint(&utf8, "../lib/app-{}.dll", .{timestamp});
     const len = try std.unicode.utf8ToUtf16Le(&utf16, name);
     utf16[len] = 0;
 

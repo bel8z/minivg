@@ -41,8 +41,13 @@ pub fn build(b: *std.build.Builder) void {
     lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
 
     // Application shared library
+    const app_name = if (optimize == .Debug)
+        std.fmt.allocPrint(b.allocator, "app-{}", .{std.time.timestamp()}) catch unreachable
+    else
+        "app";
+
     const app = b.addSharedLibrary(.{
-        .name = std.fmt.allocPrint(b.allocator, "app-{}", .{std.time.timestamp()}) catch unreachable,
+        .name = app_name,
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
         .root_source_file = .{ .path = "src/App.zig" },
