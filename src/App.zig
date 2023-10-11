@@ -13,7 +13,7 @@ const Mouse = Api.Mouse;
 
 const math = Api.math;
 const Vec2 = Api.Vec2;
-const Rect = math.AlignedBox(f32);
+const Rect = math.AlignedBox2(f32);
 const rect = math.rect;
 
 const PerfGraph = @import("PerfGraph.zig");
