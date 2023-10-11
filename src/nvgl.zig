@@ -44,39 +44,56 @@ pub fn init(gl: *const GL, allocator: Allocator, options: Options) !nvg {
 
 const GLContext = struct {
     gl: *const GL,
-    allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
     options: Options,
     shader: Shader,
     view: [2]f32,
-    textures: ArrayList(Texture) = .{},
+    textures: ArrayList(Texture),
     texture_id: i32 = 0,
     vert_arr: GL.Uint = 0,
     vert_buf: GL.Uint = 0,
-    calls: ArrayList(Call) = .{},
-    paths: ArrayList(Path) = .{},
-    verts: ArrayList(internal.Vertex) = .{},
-    uniforms: ArrayList(FragUniforms) = .{},
+    calls: ArrayList(Call) = undefined,
+    paths: ArrayList(Path) = undefined,
+    verts: ArrayList(internal.Vertex) = undefined,
+    uniforms: ArrayList(FragUniforms) = undefined,
 
     fn init(gl: *const GL, allocator: Allocator, options: Options) !*GLContext {
         var self = try allocator.create(GLContext);
+
         self.* = GLContext{
             .gl = gl,
-            .allocator = allocator,
+            .arena = std.heap.ArenaAllocator.init(allocator),
             .options = options,
             .shader = undefined,
             .view = .{ 0, 0 },
+            .textures = .{},
         };
+
+        self.clearFrameState();
+
         return self;
     }
 
     fn deinit(ctx: *GLContext) void {
+        const base_alloc = ctx.arena.child_allocator;
+        ctx.arena.deinit();
         ctx.shader.delete(ctx.gl);
-        ctx.textures.deinit(ctx.allocator);
-        ctx.calls.deinit(ctx.allocator);
-        ctx.paths.deinit(ctx.allocator);
-        ctx.verts.deinit(ctx.allocator);
-        ctx.uniforms.deinit(ctx.allocator);
-        ctx.allocator.destroy(ctx);
+        ctx.textures.deinit(base_alloc);
+        base_alloc.destroy(ctx);
+    }
+
+    fn clearFrameState(ctx: *GLContext) void {
+        // TODO (Matteo): Check performance of resetting the lists and compacting
+        // the arena vs keeping capacity and don't touch the arena
+        ctx.verts = .{};
+        ctx.paths = .{};
+        ctx.calls = .{};
+        ctx.uniforms = .{};
+        _ = ctx.arena.reset(.retain_capacity);
+    }
+
+    fn frameAlloc(ctx: *GLContext) Allocator {
+        return ctx.arena.allocator();
     }
 
     fn castPtr(ptr: *anyopaque) *GLContext {
@@ -101,7 +118,8 @@ const GLContext = struct {
             }
         }
         if (found_tex == null) {
-            found_tex = try ctx.textures.addOne(ctx.allocator);
+            const base_alloc = ctx.arena.child_allocator;
+            found_tex = try ctx.textures.addOne(base_alloc);
         }
         const tex = found_tex.?;
         tex.* = std.mem.zeroes(Texture);
@@ -724,10 +742,7 @@ fn renderViewport(uptr: *anyopaque, width: f32, height: f32, devicePixelRatio: f
 
 fn renderCancel(uptr: *anyopaque) void {
     const ctx = GLContext.castPtr(uptr);
-    ctx.verts.clearRetainingCapacity();
-    ctx.paths.clearRetainingCapacity();
-    ctx.calls.clearRetainingCapacity();
-    ctx.uniforms.clearRetainingCapacity();
+    ctx.clearFrameState();
 }
 
 fn renderFlush(uptr: *anyopaque) void {
@@ -795,10 +810,7 @@ fn renderFlush(uptr: *anyopaque) void {
     }
 
     // Reset calls
-    ctx.verts.clearRetainingCapacity();
-    ctx.paths.clearRetainingCapacity();
-    ctx.calls.clearRetainingCapacity();
-    ctx.uniforms.clearRetainingCapacity();
+    ctx.clearFrameState();
 }
 
 fn renderFill(
@@ -811,8 +823,9 @@ fn renderFill(
     paths: []const internal.Path,
 ) void {
     const ctx = GLContext.castPtr(uptr);
+    const frame_alloc = ctx.arena.allocator();
 
-    const call = ctx.calls.addOne(ctx.allocator) catch return;
+    const call = ctx.calls.addOne(frame_alloc) catch return;
     call.* = std.mem.zeroes(Call);
 
     call.call_type = .fill;
@@ -821,7 +834,7 @@ fn renderFill(
         call.call_type = .convexfill;
         call.triangle_count = 0; // Bounding box fill quad not needed for convex fill
     }
-    ctx.paths.ensureUnusedCapacity(ctx.allocator, paths.len) catch return;
+    ctx.paths.ensureUnusedCapacity(frame_alloc, paths.len) catch return;
     call.path_offset = @intCast(ctx.paths.items.len);
     call.path_count = @intCast(paths.len);
     call.image = paint.image.handle;
@@ -830,7 +843,7 @@ fn renderFill(
 
     // Allocate vertices for all the paths.
     const maxverts = maxVertCount(paths) + call.triangle_count;
-    ctx.verts.ensureUnusedCapacity(ctx.allocator, maxverts) catch return;
+    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
 
     for (paths) |path| {
         const copy = ctx.paths.addOneAssumeCapacity();
@@ -857,7 +870,7 @@ fn renderFill(
         ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[1], .u = 0.5, .v = 1.0 });
 
         call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(ctx.allocator, 2) catch return;
+        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 2) catch return;
         // Simple shader for stencil
         const frag = ctx.uniforms.addOneAssumeCapacity();
         frag.* = std.mem.zeroes(FragUniforms);
@@ -867,7 +880,7 @@ fn renderFill(
         _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1.0, ctx);
     } else {
         call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(ctx.allocator, 1) catch return;
+        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
         // Fill shader
         _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1.0, ctx);
     }
@@ -883,12 +896,13 @@ fn renderStroke(
     paths: []const internal.Path,
 ) void {
     const ctx = GLContext.castPtr(uptr);
+    const frame_alloc = ctx.arena.allocator();
 
-    const call = ctx.calls.addOne(ctx.allocator) catch return;
+    const call = ctx.calls.addOne(frame_alloc) catch return;
     call.* = std.mem.zeroes(Call);
 
     call.call_type = .stroke;
-    ctx.paths.ensureUnusedCapacity(ctx.allocator, paths.len) catch return;
+    ctx.paths.ensureUnusedCapacity(frame_alloc, paths.len) catch return;
     call.path_offset = @intCast(ctx.paths.items.len);
     call.path_count = @intCast(paths.len);
     call.image = paint.image.handle;
@@ -897,7 +911,7 @@ fn renderStroke(
 
     // Allocate vertices for all the paths.
     const maxverts = maxVertCount(paths);
-    ctx.verts.ensureUnusedCapacity(ctx.allocator, maxverts) catch return;
+    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
 
     for (paths) |path| {
         const copy = ctx.paths.addOneAssumeCapacity();
@@ -912,13 +926,13 @@ fn renderStroke(
     if (ctx.options.stencil_strokes) {
         // Fill shader
         call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(ctx.allocator, 2) catch return;
+        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 2) catch return;
         _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1, ctx);
         _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, strokeWidth, fringe, 1.0 - 0.5 / 255.0, ctx);
     } else {
         // Fill shader
         call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        _ = ctx.uniforms.ensureUnusedCapacity(ctx.allocator, 1) catch return;
+        _ = ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
         _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, strokeWidth, fringe, -1, ctx);
     }
 }
@@ -932,8 +946,9 @@ fn renderTriangles(
     verts: []const internal.Vertex,
 ) void {
     const ctx = GLContext.castPtr(uptr);
+    const frame_alloc = ctx.arena.allocator();
 
-    const call = ctx.calls.addOne(ctx.allocator) catch return;
+    const call = ctx.calls.addOne(frame_alloc) catch return;
     call.* = std.mem.zeroes(Call);
 
     call.call_type = .triangles;
@@ -943,10 +958,10 @@ fn renderTriangles(
 
     call.triangle_offset = @intCast(ctx.verts.items.len);
     call.triangle_count = @intCast(verts.len);
-    ctx.verts.appendSlice(ctx.allocator, verts) catch return;
+    ctx.verts.appendSlice(frame_alloc, verts) catch return;
 
     call.uniform_offset = @intCast(ctx.uniforms.items.len);
-    const frag = ctx.uniforms.addOne(ctx.allocator) catch return;
+    const frag = ctx.uniforms.addOne(frame_alloc) catch return;
     _ = frag.fromPaint(paint, scissor, 1, fringe, -1, ctx);
     frag.shaderType = @floatFromInt(@intFromEnum(ShaderType.image));
 }

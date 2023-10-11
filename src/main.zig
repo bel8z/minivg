@@ -43,7 +43,6 @@ fn print(
 
 pub fn main() anyerror!void {
     const app_name = "MiniVG";
-    const allocator = std.heap.page_allocator;
 
     try win32.setProcessDpiAware();
 
@@ -57,6 +56,10 @@ pub fn main() anyerror!void {
     var buf: [1024]u8 = undefined;
     print("Startup", .{});
     print("Working directory; {s}", .{std.fs.cwd().realpath(".", &buf) catch unreachable});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .verbose_log = true }){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
 
     // Init window
     print("Creating window...", .{});
