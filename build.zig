@@ -27,18 +27,16 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    const c_flags = .{
-        "-DFONS_NO_STDIO",
-        "-DSTBI_NO_STDIO",
-    };
+    const c_flags = .{};
 
     lib.linkLibC();
     lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    lib.addIncludePath(.{ .path = "deps" });
     lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
     lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
     lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
+    lib.installHeader("deps/layout.h", "layout.h");
+    lib.addCSourceFile(.{ .file = .{ .path = "src/c/deps.c" }, .flags = &c_flags });
 
     // Application shared library
     const app_name = if (optimize == .Debug)
