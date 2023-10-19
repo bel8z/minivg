@@ -1,7 +1,7 @@
 const std = @import("std");
 
 // NanoVG
-pub const nvg = @import("nanovg");
+pub const NanoVg = @import("nanovg");
 
 // Custom libs
 pub const math = @import("math.zig");
@@ -36,11 +36,11 @@ pub const Opts = packed struct {
     fps_percent: bool = false,
 };
 
-init: *const fn (allocator: std.mem.Allocator, vg: nvg) Error!*App,
-deinit: *const fn (self: *App, allocator: std.mem.Allocator, vg: nvg) void,
+init: *const fn (allocator: std.mem.Allocator, vg: NanoVg) Error!*App,
+deinit: *const fn (self: *App, allocator: std.mem.Allocator, vg: NanoVg) void,
 update: *const fn (
     self: *App,
-    vg: nvg,
+    vg: NanoVg,
     viewport: Vec2,
     cursor: Mouse,
     pixel_size: f32,

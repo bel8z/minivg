@@ -16,15 +16,15 @@ const wgl = @import("wgl.zig");
 const GL = @import("gl.zig");
 var gl: GL = undefined;
 
-const Api = @import("api.zig");
+const Api = @import("Api.zig");
 const ApiLoader = @import("Loader.zig");
 const math = Api.math;
 const Vec2 = Api.Vec2;
 
 // NanoVG context & backend
-const nvg = Api.nvg;
+const NanoVg = Api.NanoVg;
 const nvgl = @import("nvgl.zig");
-var vg: nvg = undefined;
+var nvg: NanoVg = undefined;
 
 const App = Api.App;
 const Mouse = Api.Mouse;
@@ -119,24 +119,24 @@ pub fn main() anyerror!void {
     // Init NanoVG context
     print("Initializing NanoVG...", .{});
 
-    vg = try nvgl.init(&gl, allocator, .{
+    nvg = try nvgl.init(&gl, allocator, .{
         .antialias = true,
         .stencil_strokes = false,
         .debug = true,
     });
-    defer vg.deinit();
+    defer nvg.deinit();
 
     print("Initializing NanoVG...Done", .{});
 
     // Init fonts
     print("Loading fonts...", .{});
 
-    _ = vg.createFontMem("icons", @embedFile("assets/entypo.ttf"));
-    const sans = vg.createFontMem("sans", @embedFile("assets/Roboto-Regular.ttf"));
-    const bold = vg.createFontMem("sans-bold", @embedFile("assets/Roboto-Bold.ttf"));
-    const emoji = vg.createFontMem("emoji", @embedFile("assets/NotoEmoji-Regular.ttf"));
-    _ = vg.addFallbackFontId(sans, emoji);
-    _ = vg.addFallbackFontId(bold, emoji);
+    _ = nvg.createFontMem("icons", @embedFile("assets/entypo.ttf"));
+    const sans = nvg.createFontMem("sans", @embedFile("assets/Roboto-Regular.ttf"));
+    const bold = nvg.createFontMem("sans-bold", @embedFile("assets/Roboto-Bold.ttf"));
+    const emoji = nvg.createFontMem("emoji", @embedFile("assets/NotoEmoji-Regular.ttf"));
+    _ = nvg.addFallbackFontId(sans, emoji);
+    _ = nvg.addFallbackFontId(bold, emoji);
 
     print("Loading fonts...Done", .{});
 
@@ -144,8 +144,8 @@ pub fn main() anyerror!void {
     print("Loading application...", .{});
 
     var loader = try ApiLoader.init(&api);
-    app = try api.init(allocator, vg);
-    defer api.deinit(app, allocator, vg);
+    app = try api.init(allocator, nvg);
+    defer api.deinit(app, allocator, nvg);
 
     print("Loading application...Done", .{});
 
@@ -290,7 +290,7 @@ fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
     }
     gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
 
-    _ = api.update(app, vg, viewport, cursor, pixel_size, opt);
+    _ = api.update(app, nvg, viewport, cursor, pixel_size, opt);
 
     wgl.swapBuffers(dc) catch unreachable;
 }

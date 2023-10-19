@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 const win32 = @import("win32.zig");
 const L = win32.L;
 
-const Api = @import("api.zig");
+const Api = @import("Api.zig");
 
 const Loader = @This();
 
