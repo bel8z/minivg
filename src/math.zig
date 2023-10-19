@@ -412,16 +412,17 @@ test "math.Mat" {
     try std.testing.expect(vec.y == mul.y);
 }
 
-//=== Geometric primitives ===//
+//=== 2D Geometric primitives ===//
 
 /// Aligned box, a.k.a. rectangle with 0° rotation
-pub fn AlignedBox(comptime T: type) type {
+pub fn AlignedBox2(comptime T: type) type {
+    const Vec = Vec2(T);
+
     return extern struct {
         origin: Vec = .{},
         size: Vec = .{},
 
         const Self = @This();
-        const Vec = Vec2(T);
 
         pub inline fn center(self: Self) Vec {
             return self.size.mul(0.5).add(self.origin);
@@ -448,11 +449,32 @@ pub fn AlignedBox(comptime T: type) type {
                 .size = self.size.add(amount),
             };
         }
+
+        pub fn asArray(ptr: *Self) *[4]T {
+            return @ptrCast(ptr);
+        }
+
+        pub fn toArray(self: Self) [4]T {
+            // TODO (Matteo): Improve? Assignment to local variable is required,
+            // because self is constant.
+            var temp = self;
+            return temp.asArray().*;
+        }
     };
 }
 
+test "math.AlignedBox2" {
+    const box = rect(@as(f32, 10), 10, 30, 50);
+    const arr = box.toArray();
+
+    try std.testing.expect(arr[0] == box.origin.x);
+    try std.testing.expect(arr[1] == box.origin.y);
+    try std.testing.expect(arr[2] == box.size.x);
+    try std.testing.expect(arr[3] == box.size.y);
+}
+
 /// Oriented box, a.k.a. rectangle with arbitary rotation
-pub fn OrientedBox(comptime T: type) type {
+pub fn OrientedBox2(comptime T: type) type {
     return extern struct {
         origin: Vec2(T) = .{},
         size: Vec2(T) = .{},
@@ -461,7 +483,7 @@ pub fn OrientedBox(comptime T: type) type {
 }
 
 /// Ellipse (circle is a degenerate case) with arbitary rotation
-pub fn Ellipse(comptime T: type) type {
+pub fn Ellipse2(comptime T: type) type {
     return extern struct {
         center: Vec2(T) = .{},
         size: Vec2(T) = .{},
@@ -475,7 +497,7 @@ pub inline fn rect(
     y: @TypeOf(x),
     w: @TypeOf(x),
     h: @TypeOf(x),
-) AlignedBox(@TypeOf(x)) {
+) AlignedBox2(@TypeOf(x)) {
     return .{
         .origin = .{ .x = x, .y = y },
         .size = .{ .x = w, .y = h },

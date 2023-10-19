@@ -13,10 +13,11 @@ const Mouse = Api.Mouse;
 
 const math = Api.math;
 const Vec2 = Api.Vec2;
-const Rect = math.AlignedBox(f32);
+const Rect = math.AlignedBox2(f32);
 const rect = math.rect;
 
 const PerfGraph = @import("PerfGraph.zig");
+const Layout = @import("Layout.zig");
 
 // Demo stuff
 const image_files = [_][]const u8{
@@ -40,6 +41,7 @@ images: [image_files.len]NanoVg.Image = undefined,
 watch: Stopwatch = undefined,
 elapsed: f32 = 0,
 fps: PerfGraph = undefined,
+layout: Layout = undefined,
 
 const App = @This();
 
@@ -63,6 +65,8 @@ pub fn init(allocator: std.mem.Allocator, nvg: NanoVg) Error!*Api.App {
     // NOTE (Matteo): Name is allocated because static strings are
     // not friendly to hot reloading
     self.fps = PerfGraph.init(try allocator.dupe(u8, "Frame Time"));
+
+    self.layout = Layout.init();
 
     return @ptrCast(self);
 }

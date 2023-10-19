@@ -27,18 +27,16 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    const c_flags = .{
-        "-DFONS_NO_STDIO",
-        "-DSTBI_NO_STDIO",
-    };
+    const c_flags = .{};
 
     lib.linkLibC();
     lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    lib.addIncludePath(.{ .path = "deps" });
     lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
     lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
     lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/fontstash.c" }, .flags = &c_flags });
-    lib.addCSourceFile(.{ .file = .{ .path = nvg_path ++ "/src/stb_image.c" }, .flags = &c_flags });
+    lib.installHeader("deps/layout.h", "layout.h");
+    lib.addCSourceFile(.{ .file = .{ .path = "src/c/deps.c" }, .flags = &c_flags });
 
     // Application shared library
     const app_name = if (optimize == .Debug)
@@ -102,15 +100,17 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     // Creates a step for unit testing.
-    const exe_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+    const unit_tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/test.zig" },
         .target = target,
         .optimize = optimize,
     });
+
+    const run_unit_tests = b.addRunArtifact(unit_tests);
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+    test_step.dependOn(&run_unit_tests.step);
 }
