@@ -16,8 +16,8 @@ const Vec2 = Api.Vec2;
 const Rect = math.AlignedBox2(f32);
 const rect = math.rect;
 
-const PerfGraph = @import("PerfGraph.zig");
-const Layout = @import("Layout.zig");
+const PerfGraph = @import("lib/perf_graph.zig");
+const Layout = @import("lib/layout.zig");
 
 // Demo stuff
 const image_files = [_][]const u8{

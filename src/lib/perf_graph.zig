@@ -1,4 +1,4 @@
-const PerfGraph = @This();
+pub const PerfGraph = @This();
 
 const std = @import("std");
 const nvg = @import("nanovg");

@@ -1412,7 +1412,7 @@ pub const Attachment = enum(Uint) {
 
 const builtin = @import("builtin");
 
-pub const APIENTRY = if (builtin.os.tag == .windows) @import("win32.zig").WINAPI else .C;
+pub const APIENTRY = if (builtin.os.tag == .windows) @import("../win32.zig").WINAPI else .C;
 
 pub const DebugProc = *const fn (
     source: Enum,

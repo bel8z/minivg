@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const win32 = @import("win32.zig");
+const win32 = @import("../win32.zig");
 const L = win32.L;
 const WINAPI = win32.WINAPI;
 

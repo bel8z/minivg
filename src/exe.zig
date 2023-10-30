@@ -12,18 +12,17 @@ const VK_ESCAPE = 0x1B;
 const VK_SPACE = 0x20;
 
 // OpenGL stuff
-const wgl = @import("wgl.zig");
-const GL = @import("gl.zig");
+const wgl = @import("exe/wgl.zig");
+const GL = @import("exe/gl.zig");
 var gl: GL = undefined;
 
-const Api = @import("Api.zig");
-const ApiLoader = @import("Loader.zig");
+const Api = @import("api.zig");
 const math = Api.math;
 const Vec2 = Api.Vec2;
 
 // NanoVG context & backend
 const NanoVg = Api.NanoVg;
-const nvgl = @import("nvgl.zig");
+const nvgl = @import("exe/nvgl.zig");
 var nvg: NanoVg = undefined;
 
 const App = Api.App;
@@ -143,7 +142,7 @@ pub fn main() anyerror!void {
     // Init app
     print("Loading application...", .{});
 
-    var loader = try ApiLoader.init(&api);
+    var loader = try Api.Loader.init(&api);
     app = try api.init(allocator, nvg);
     defer api.deinit(app, allocator, nvg);
 

@@ -2,7 +2,7 @@ const c = @cImport({
     @cInclude("layout.h");
 });
 
-const Layout = @This();
+pub const Layout = @This();
 
 ctx: c.lay_context,
 
