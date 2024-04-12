@@ -88,12 +88,14 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
     }
 
     return struct {
-        pub usingnamespace switch (@typeInfo(T)) {
-            .Float => FloatUtil,
-            .Int => IntUtil,
+        pub const is_float = switch (@typeInfo(T)) {
+            .Float => true,
+            .Int => false,
             else => compileError("Expected scalar type, got {s}", .{@typeName(T)}),
         };
 
+        /// Initialize vector from a series of scalar values (may be a single value, an array, a
+        /// tuple or a struct with length greater or equal to the vector size)
         pub fn init(v: anytype) Vec {
             const V = @TypeOf(v);
             const type_err = std.fmt.comptimePrint(
@@ -137,9 +139,9 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
-        const FloatUtil = struct {
-            pub const is_float = true;
-
+        // Initialization utils for float vectors
+        pub usingnamespace if (is_float) struct {
+            /// Initialize float vector from a sequence of integers
             pub fn fromInt(v: anytype) Vec {
                 const V = @TypeOf(v);
                 const type_err = std.fmt.comptimePrint(
@@ -181,12 +183,9 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
 
                 return r;
             }
-        };
+        } else struct {};
 
-        const IntUtil = struct {
-            pub const is_float = false;
-        };
-
+        /// Addition with scalar or other vector
         pub inline fn add(a: Vec, b: anytype) Vec {
             const B = @TypeOf(b);
 
@@ -210,6 +209,7 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
+        /// Subtraction with scalar or other vector
         pub inline fn sub(a: Vec, b: anytype) Vec {
             const B = @TypeOf(b);
             var r: Vec = undefined;
@@ -232,6 +232,7 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
+        /// Multiplication by scalar or Hadamard product with other vector
         pub inline fn mul(a: Vec, b: T) Vec {
             const B = @TypeOf(b);
             var r: Vec = undefined;
@@ -254,6 +255,7 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
+        /// Division by scalar or Hadamard division with other vector
         pub inline fn div(a: Vec, b: T) Vec {
             const B = @TypeOf(b);
             var r: Vec = undefined;
@@ -277,6 +279,7 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
+        /// Scalar (dot) product between two vectors
         pub inline fn dot(a: Vec, b: Vec) T {
             var r: T = 0;
 
@@ -288,18 +291,22 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
             return r;
         }
 
+        /// Compute squared norm of given vector
         pub inline fn normSq(vec: Vec) T {
             return vec.dot(vec);
         }
 
+        /// Compute norm of given vector
         pub inline fn norm(vec: Vec) T {
             return math.sqrt(vec.normSq());
         }
 
+        /// Compute squared distance between two vectors (squared norm of the difference)
         pub inline fn distSq(a: Vec, b: Vec) T {
             return a.sub(b).norm();
         }
 
+        /// Compute distance between two vectors (norm of the difference)
         pub inline fn dist(a: Vec, b: Vec) T {
             return math.sqrt(a.distSq(b));
         }
