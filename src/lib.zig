@@ -76,6 +76,7 @@ pub fn deinit(app: *Api.App, allocator: std.mem.Allocator, nvg: NanoVg) void {
     for (self.images) |image| {
         nvg.deleteImage(image);
     }
+    allocator.free(self.fps.name);
     allocator.destroy(self);
 }
 
