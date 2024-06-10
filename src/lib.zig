@@ -42,6 +42,15 @@ watch: Stopwatch = undefined,
 elapsed: f32 = 0,
 fps: PerfGraph = undefined,
 layout: Layout = undefined,
+rand: std.Random.DefaultPrng = undefined,
+particles: std.ArrayListUnmanaged(Particle) = .{},
+prev_win: Vec2 = Vec2.init(-1),
+
+const Particle = struct {
+    pos: Vec2 = {},
+    vel: Vec2 = {},
+    col: NanoVg.Color = {},
+};
 
 const App = @This();
 
@@ -68,6 +77,9 @@ pub fn init(allocator: std.mem.Allocator, nvg: NanoVg) Error!*Api.App {
 
     self.layout = Layout.init();
 
+    self.rand = std.Random.DefaultPrng.init(1234);
+    try self.particles.ensureTotalCapacityPrecise(allocator, 1024);
+
     return @ptrCast(self);
 }
 
@@ -76,6 +88,7 @@ pub fn deinit(app: *Api.App, allocator: std.mem.Allocator, nvg: NanoVg) void {
     for (self.images) |image| {
         nvg.deleteImage(image);
     }
+    self.particles.deinit(allocator);
     allocator.free(self.fps.name);
     allocator.destroy(self);
 }
@@ -83,7 +96,7 @@ pub fn deinit(app: *Api.App, allocator: std.mem.Allocator, nvg: NanoVg) void {
 pub fn update(
     app: *Api.App,
     nvg: NanoVg,
-    viewport: Vec2,
+    viewport: Rect,
     cursor: Mouse,
     pixel_size: f32,
     opts: Api.Opts,
@@ -91,7 +104,7 @@ pub fn update(
     const self: *App = @ptrCast(@alignCast(app));
     const dt = self.frame();
 
-    nvg.beginFrame(viewport.x, viewport.y, 1 / pixel_size);
+    nvg.beginFrame(viewport.size.x, viewport.size.y, 1 / pixel_size);
 
     // Draw options
     {
@@ -107,7 +120,7 @@ pub fn update(
         var bounds: [4]f32 = undefined;
         _ = nvg.textBounds(0, 0, "long_option_name: off", &bounds);
         const h = bounds[3] - bounds[1];
-        const x = viewport.x - bounds[2] - bounds[0];
+        const x = viewport.size.x - bounds[2] - bounds[0];
         var y: f32 = 0;
 
         const opt_fields = std.meta.fields(@TypeOf(opts));
@@ -117,13 +130,17 @@ pub fn update(
             var adv = nvg.text(x, y, field.name);
             adv = nvg.text(adv, y, ":");
             nvg.textAlign(.{ .horizontal = .right, .vertical = .top });
-            _ = nvg.text(viewport.x, y, if (@field(opts, field.name)) "ON" else "OFF");
+            _ = nvg.text(viewport.size.x, y, if (@field(opts, field.name)) "ON" else "OFF");
             y += h;
         }
     }
 
     // Draw demo stuff
-    demo(nvg, cursor, viewport, self.images[0..], self.elapsed, opts);
+    if (opts.demo) {
+        demo(nvg, cursor, viewport.size, self.images[0..], self.elapsed, opts);
+    } else {
+        self.subframe_simulation(nvg, cursor, viewport, dt);
+    }
 
     // Draw FPS graph
     self.fps.update(dt);
@@ -138,6 +155,104 @@ fn frame(self: *App) f32 {
     const dt = t - self.elapsed;
     self.elapsed = t;
     return dt;
+}
+
+fn subframe_simulation(
+    self: *App,
+    nvg: NanoVg,
+    m: Mouse,
+    viewport: Rect,
+    real_dt: f32,
+) void {
+    const velocity = 1000.0;
+    const gravity = 1000.0;
+    const damping = 0.8;
+    const radius = 20.0;
+
+    const target_fps: f32 = 480;
+    const target_dt = @min(real_dt, 1.0 / target_fps);
+
+    const scale = target_dt / real_dt;
+
+    const winsize = viewport.size;
+    const winpos = viewport.origin;
+    var dwinpos: Vec2 = .{};
+    if (self.prev_win.x < 0) {
+        self.prev_win = winpos;
+    } else {
+        dwinpos = winpos.sub(self.prev_win);
+        self.prev_win = winpos;
+    }
+    const offset = dwinpos.mul(scale);
+
+    if (m.click()) {
+        const rand = self.rand.random();
+        const ang = math.tau * rand.float(f32);
+        var p = self.particles.addOneAssumeCapacity();
+        p.pos = m.pos;
+        p.col = hsv(360 * rand.float(f32), 0.5, 0.8);
+        p.vel = .{
+            .x = velocity * math.cos(ang),
+            .y = velocity * math.sin(ang),
+        };
+    }
+
+    const subframes = @as(usize, @intFromFloat(@round(real_dt / target_dt)));
+    for (1..subframes + 1) |i| {
+        for (self.particles.items) |*item| {
+            item.vel.y += gravity * target_dt;
+            item.pos = item.pos.sub(offset).add(item.vel.mul(target_dt));
+
+            if (item.pos.x - radius <= 0) {
+                item.pos.x = radius;
+                item.vel.x *= -damping;
+                item.vel.x += offset.x * 300;
+            } else if (item.pos.x + radius >= winsize.x) {
+                item.pos.x = winsize.x - radius;
+                item.vel.x *= -damping;
+                item.vel.x += offset.x * 300;
+            }
+
+            if (item.pos.y - radius <= 0) {
+                item.pos.y = radius;
+                item.vel.y *= -damping;
+                item.vel.y += offset.y * 300;
+            } else if (item.pos.y + radius >= winsize.y) {
+                item.pos.y = winsize.y - radius;
+                item.vel.y *= -damping;
+                item.vel.y += offset.y * 300;
+            }
+
+            var col = item.col;
+            col.a = @as(f32, @floatFromInt(i)) * target_dt / real_dt;
+
+            nvg.beginPath();
+            nvg.circle(item.pos.x, item.pos.y, radius);
+            nvg.strokeColor(col);
+            nvg.strokeWidth(0.2 * radius);
+            nvg.stroke();
+        }
+    }
+
+    nvg.fontSize(15.0);
+    nvg.fontFace("sans");
+    nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
+    nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
+    var txt_bounds: [4]f32 = undefined;
+    var txt_buf: [16]u8 = undefined;
+    const txt = std.fmt.bufPrint(&txt_buf, "X{}", .{subframes}) catch unreachable;
+    _ = nvg.textBounds(0, 0, txt, &txt_bounds);
+    const txt_h = txt_bounds[3] - txt_bounds[1];
+    _ = nvg.text(0, winsize.y - txt_h, txt);
+}
+
+fn hsv(h: f32, s: f32, v: f32) NanoVg.Color {
+    const l = v - 0.5 * s;
+    var sl: f32 = 0;
+    if (l != 0 and l != 1) {
+        sl = (v - s) / @min(l, 1 - l);
+    }
+    return NanoVg.hsl(h, sl, l);
 }
 
 fn demo(
