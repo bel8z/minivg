@@ -14,6 +14,7 @@ pub const NanoVg = @import("nanovg");
 // Custom libs
 pub const math = @import("math.zig");
 pub const Vec2 = math.Vec2(f32);
+pub const Rect = math.AlignedBox2(f32);
 
 pub const App = opaque {};
 
@@ -37,10 +38,11 @@ pub const InitFn = *const fn (api: *Api) void;
 pub const Opts = packed struct {
     blowup: bool = false,
     premult: bool = false,
-    dpi: bool = true,
+    dpi: bool = false,
     animations: bool = false,
+    demo: bool = false,
     srgb: bool = false,
-    steady: bool = false,
+    steady: bool = true,
     fps_percent: bool = false,
 };
 
@@ -49,7 +51,7 @@ deinit: *const fn (self: *App, allocator: std.mem.Allocator, vg: NanoVg) void,
 update: *const fn (
     self: *App,
     vg: NanoVg,
-    viewport: Vec2,
+    viewport: Rect,
     cursor: Mouse,
     pixel_size: f32,
     opts: Opts,

@@ -19,6 +19,7 @@ var gl: GL = undefined;
 const Api = @import("api.zig");
 const math = Api.math;
 const Vec2 = Api.Vec2;
+const Rect = Api.Rect;
 
 // NanoVG context & backend
 const NanoVg = Api.NanoVg;
@@ -162,8 +163,9 @@ pub fn main() anyerror!void {
         }
 
         if (vsync != opt.steady) {
-            try wgl.setSwapInterval(@intFromBool(opt.steady));
             vsync = opt.steady;
+            const interval: c_int = if (vsync) 2 else 0;
+            try wgl.setSwapInterval(interval);
         }
 
         if (vsync) {
@@ -228,6 +230,7 @@ fn wndProc(
                 'R' => opt.srgb = !opt.srgb,
                 'S' => opt.steady = !opt.steady,
                 'F' => opt.fps_percent = !opt.fps_percent,
+                'M' => opt.demo = !opt.demo,
                 else => {},
             }
 
@@ -239,6 +242,9 @@ fn wndProc(
         win32.WM_PAINT => {
             // NOTE (Matteo): Just marking the event has being handled, see
             // main loop for actual management.
+        },
+        win32.WM_MOVE, win32.WM_MOVING => {
+            if (opt.steady) _ = win32.invalidateRect(win, null, true);
         },
         else => return win32.DefWindowProcW(win, msg, wparam, lparam),
     }
@@ -256,10 +262,16 @@ fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
     const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
     // Fetch viewport and DPI information
-    const viewport_rect: win32.RECT = win32.getClientRect(win);
-    assert(viewport_rect.left == 0 and viewport_rect.top == 0);
+    const win_rect = win32.getWindowRect(win);
+    const viewport_rect = win32.getClientRect(win);
     if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return;
-    const viewport = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size);
+
+    assert(viewport_rect.left == 0 and viewport_rect.top == 0);
+
+    const viewport = Rect{
+        .origin = Vec2.fromInt(.{ win_rect.left, win_rect.top }).mul(pixel_size),
+        .size = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size),
+    };
 
     // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
     // pixel coordinates
