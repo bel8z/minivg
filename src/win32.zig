@@ -63,6 +63,18 @@ extern "user32" fn GetClientRect(
     rect_ptr: *win32.RECT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
+pub inline fn getWindowRect(win: win32.HWND) win32.RECT {
+    var rect: win32.RECT = undefined;
+    const result = GetWindowRect(win, &rect);
+    assert(result != 0);
+    return rect;
+}
+
+extern "user32" fn GetWindowRect(
+    hwnd: win32.HWND,
+    rect_ptr: *win32.RECT,
+) callconv(win32.WINAPI) win32.BOOL;
+
 pub fn getDC(hwnd: win32.HWND) !win32.HDC {
     return GetDC(hwnd) orelse error.Unexpected;
 }
