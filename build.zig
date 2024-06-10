@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -19,7 +19,8 @@ pub fn build(b: *std.build.Builder) void {
 
     // NanoVG
     const nvg_path = "deps/nanovg";
-    const nvg = b.addModule("nanovg", .{ .source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
+    const nvg = b.addModule("nanovg", .{ .root_source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
+    nvg.addIncludePath(.{ .path = nvg_path ++ "/src" });
 
     const lib = b.addStaticLibrary(.{
         .name = "lib",
@@ -32,10 +33,10 @@ pub fn build(b: *std.build.Builder) void {
     lib.linkLibC();
     lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
     lib.addIncludePath(.{ .path = "deps" });
-    lib.installHeader(nvg_path ++ "/src/fontstash.h", "fontstash.h");
-    lib.installHeader(nvg_path ++ "/src/stb_image.h", "stb_image.h");
-    lib.installHeader(nvg_path ++ "/src/stb_truetype.h", "stb_truetype.h");
-    lib.installHeader("deps/layout.h", "layout.h");
+    lib.installHeader(.{ .path = nvg_path ++ "/src/fontstash.h" }, "fontstash.h");
+    lib.installHeader(.{ .path = nvg_path ++ "/src/stb_image.h" }, "stb_image.h");
+    lib.installHeader(.{ .path = nvg_path ++ "/src/stb_truetype.h" }, "stb_truetype.h");
+    lib.installHeader(.{ .path = "deps/layout.h" }, "layout.h");
     lib.addCSourceFile(.{ .file = .{ .path = "src/c/deps.c" }, .flags = &c_flags });
 
     // Application shared library
@@ -52,8 +53,8 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    app.addOptions("build_options", build_options);
-    app.addModule("nanovg", nvg);
+    app.root_module.addOptions("build_options", build_options);
+    app.root_module.addImport("nanovg", nvg);
     app.linkLibrary(lib);
     b.installArtifact(app);
 
@@ -67,8 +68,8 @@ pub fn build(b: *std.build.Builder) void {
         .optimize = optimize,
     });
     exe.subsystem = .Windows;
-    exe.addOptions("build_options", build_options);
-    exe.addModule("nanovg", nvg);
+    exe.root_module.addOptions("build_options", build_options);
+    exe.root_module.addImport("nanovg", nvg);
     exe.linkSystemLibrary("opengl32");
     exe.linkLibrary(lib);
     // This declares intent for the executable to be installed into the

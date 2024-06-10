@@ -119,8 +119,6 @@ pub fn main() anyerror!void {
     print("Initializing NanoVG...", .{});
 
     nvg = try nvgl.init(&gl, allocator, .{
-        .antialias = true,
-        .stencil_strokes = false,
         .debug = true,
     });
     defer nvg.deinit();
@@ -176,9 +174,9 @@ pub fn main() anyerror!void {
         }
 
         // Process all input
-        while (try win32.peekMessageW(&msg, null, 0, 0, win32.PM_REMOVE)) {
-            _ = win32.translateMessage(&msg);
-            _ = win32.dispatchMessageW(&msg);
+        while (win32.PeekMessageW(&msg, null, 0, 0, win32.PM_REMOVE) == win32.TRUE) {
+            _ = win32.TranslateMessage(&msg);
+            _ = win32.DispatchMessageW(&msg);
 
             switch (msg.message) {
                 win32.WM_QUIT => {
@@ -200,7 +198,7 @@ pub fn main() anyerror!void {
         if (loop_state == .Update) {
             var ps: win32.PAINTSTRUCT = undefined;
             const paint_dc = win32.beginPaint(win, &ps) catch unreachable;
-            defer win32.endPaint(win, &ps) catch unreachable;
+            defer win32.endPaint(win, ps) catch unreachable;
             updateAndRender(win, paint_dc);
         }
     }
@@ -233,16 +231,16 @@ fn wndProc(
                 else => {},
             }
 
-            if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
+            if (!opt.steady) _ = win32.invalidateRect(win, null, true);
         },
         win32.WM_MOUSEMOVE => {
-            if (!opt.steady) _ = win32.InvalidateRect(win, null, win32.TRUE);
+            if (!opt.steady) _ = win32.invalidateRect(win, null, true);
         },
         win32.WM_PAINT => {
             // NOTE (Matteo): Just marking the event has being handled, see
             // main loop for actual management.
         },
-        else => return win32.defWindowProcW(win, msg, wparam, lparam),
+        else => return win32.DefWindowProcW(win, msg, wparam, lparam),
     }
 
     return 0;
@@ -258,17 +256,14 @@ fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
     const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
 
     // Fetch viewport and DPI information
-    var viewport_rect: win32.RECT = undefined;
-    _ = win32.GetClientRect(win, &viewport_rect);
+    const viewport_rect: win32.RECT = win32.getClientRect(win);
     assert(viewport_rect.left == 0 and viewport_rect.top == 0);
     if (viewport_rect.right == 0 or viewport_rect.bottom == 0) return;
     const viewport = Vec2.fromInt(.{ viewport_rect.right, viewport_rect.bottom }).mul(pixel_size);
 
     // TODO (Matteo): Cursor position must be scaled to be kept in "virtual"
     // pixel coordinates
-    var cursor_pt: win32.POINT = undefined;
-    _ = win32.GetCursorPos(&cursor_pt);
-    _ = win32.ScreenToClient(win, &cursor_pt);
+    const cursor_pt: win32.POINT = win32.pointToClient(win, win32.getCursorPos());
     const cursor = Mouse{
         .pos = Vec2.fromInt(cursor_pt).mul(pixel_size),
         .button = .{

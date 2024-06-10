@@ -1600,6 +1600,8 @@ useProgram: *const fn (program: Uint) callconv(APIENTRY) void,
 getProgramiv: *const fn (program: Uint, info: GL.Enum, params: *Int) callconv(APIENTRY) void,
 getProgramInfoLog: *const fn (program: Uint, max_length: Int, length: [*c]Int, info_log: [*c]u8) callconv(APIENTRY) void,
 
+bindAttribLocation: *const fn (program: Uint, index: Uint, name: [*:0]const u8) callconv(APIENTRY) void,
+
 getUniformLocation: *const fn (program: Uint, name: [*:0]const u8) callconv(APIENTRY) Int,
 getUniformiv: *const fn (program: Uint, location: Int, params: [*c]Int) callconv(APIENTRY) void,
 getUniformuiv: *const fn (program: Uint, location: Int, params: [*c]Uint) callconv(APIENTRY) void,

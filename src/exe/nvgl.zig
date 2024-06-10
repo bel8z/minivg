@@ -10,8 +10,6 @@ const nvg = @import("nanovg");
 const internal = nvg.internal;
 
 pub const Options = struct {
-    antialias: bool = false,
-    stencil_strokes: bool = false,
     debug: bool = false,
 };
 
@@ -20,7 +18,6 @@ pub fn init(gl: *const GL, allocator: Allocator, options: Options) !nvg {
 
     const params = internal.Params{
         .user_ptr = gl_context,
-        .edge_antialias = options.antialias,
         .renderCreate = renderCreate,
         .renderCreateTexture = renderCreateTexture,
         .renderDeleteTexture = renderDeleteTexture,
@@ -58,8 +55,7 @@ const GLContext = struct {
     uniforms: ArrayList(FragUniforms) = undefined,
 
     fn init(gl: *const GL, allocator: Allocator, options: Options) !*GLContext {
-        var self = try allocator.create(GLContext);
-
+        const self = try allocator.create(GLContext);
         self.* = GLContext{
             .gl = gl,
             .arena = std.heap.ArenaAllocator.init(allocator),
@@ -76,9 +72,9 @@ const GLContext = struct {
 
     fn deinit(ctx: *GLContext) void {
         const base_alloc = ctx.arena.child_allocator;
-        ctx.arena.deinit();
         ctx.shader.delete(ctx.gl);
         ctx.textures.deinit(base_alloc);
+        ctx.arena.deinit();
         base_alloc.destroy(ctx);
     }
 
@@ -247,11 +243,84 @@ const Shader = struct {
     }
 };
 
+pub const Framebuffer = struct {
+    gl: *const GL,
+    fbo: GL.Uint,
+    rbo: GL.Uint,
+    texture: GL.Uint,
+    image: nvg.Image,
+
+    pub fn create(vg: nvg, gl: *const GL, w: u32, h: u32, flags: nvg.ImageFlags) Framebuffer {
+        var defaultFBO: GL.Int = undefined;
+        var defaultRBO: GL.Int = undefined;
+        var fb: Framebuffer = undefined;
+
+        fb.gl = gl;
+
+        gl.getIntegerv(.FRAMEBUFFER_BINDING, &defaultFBO);
+        gl.getIntegerv(.RENDERBUFFER_BINDING, &defaultRBO);
+        defer {
+            gl.bindFramebuffer(.FRAMEBUFFER, @intCast(defaultFBO));
+            gl.bindRenderbuffer(.RENDERBUFFER, @intCast(defaultRBO));
+        }
+
+        var image_flags = flags;
+        image_flags.flip_y = true;
+        image_flags.premultiplied = true;
+        fb.image = vg.createImageRGBA(w, h, image_flags, null);
+
+        const gl_ctx: *GLContext = @alignCast(@ptrCast(vg.ctx.params.user_ptr));
+        fb.texture = gl_ctx.findTexture(fb.image.handle).?.tex;
+
+        // frame buffer object
+        gl.genFramebuffers(1, &fb.fbo);
+        gl.bindFramebuffer(.FRAMEBUFFER, fb.fbo);
+
+        // render buffer object
+        gl.genRenderbuffers(1, &fb.rbo);
+        gl.bindRenderbuffer(.RENDERBUFFER, fb.rbo);
+        gl.renderbufferStorage(.RENDERBUFFER, .STENCIL_INDEX8, @intCast(w), @intCast(h));
+
+        // combine all
+        gl.framebufferTexture2D(.FRAMEBUFFER, .COLOR_ATTACHMENT0, .TEXTURE_2D, fb.texture, 0);
+        gl.framebufferRenderbuffer(.FRAMEBUFFER, .STENCIL_ATTACHMENT, .RENDERBUFFER, fb.rbo);
+
+        if (gl.checkFramebufferStatus(.FRAMEBUFFER) != .FRAMEBUFFER_COMPLETE) {
+            logger.err("FBO incomplete", .{});
+        }
+
+        return fb;
+    }
+
+    pub fn bind(fb: Framebuffer) void {
+        const gl = fb.gl;
+        gl.bindFramebuffer(.FRAMEBUFFER, fb.fbo);
+    }
+
+    pub fn unbind(gl: *const GL) void {
+        gl.bindFramebuffer(.FRAMEBUFFER, 0);
+    }
+
+    pub fn delete(fb: *Framebuffer, vg: nvg) void {
+        const gl = fb.gl;
+        if (fb.fbo != 0)
+            gl.DeleteFramebuffers(1, &fb.fbo);
+        if (fb.rbo != 0)
+            gl.DeleteRenderbuffers(1, &fb.rbo);
+        if (fb.image.handle >= 0)
+            vg.deleteImage(fb.image);
+        fb.fbo = 0;
+        fb.rbo = 0;
+        fb.texture = 0;
+        fb.image.handle = -1;
+    }
+};
+
 const Texture = struct {
     id: i32,
     tex: GL.Uint,
-    width: i32,
-    height: i32,
+    width: u32,
+    height: u32,
     tex_type: internal.TextureType,
     flags: nvg.ImageFlags,
 };
@@ -288,18 +357,19 @@ const Blend = struct {
     }
 };
 
-const call_type = enum {
-    none,
+const CallType = enum {
     fill,
-    convexfill,
+    fill_convex,
     stroke,
     triangles,
 };
 
 const Call = struct {
-    call_type: call_type,
+    call_type: CallType,
     image: i32,
     colormap: i32,
+    clip_path_offset: u32,
+    clip_path_count: u32,
     path_offset: u32,
     path_count: u32,
     triangle_offset: u32,
@@ -307,19 +377,62 @@ const Call = struct {
     uniform_offset: u32,
     blend_func: Blend,
 
+    // Stencils the clips paths into the most significant bit (0x80) of the stencil buffer
+    fn stencilClipPaths(call: Call, ctx: *GLContext) void {
+        const gl = ctx.gl;
+        const clip_paths = ctx.paths.items[call.clip_path_offset..][0..call.clip_path_count];
+
+        setUniformsSimple(ctx);
+
+        const convex = false;
+        if (convex) {
+            // Only write to the highest bit
+            gl.stencilMask(0x80);
+            gl.stencilFunc(.ALWAYS, 0x80, 0xFF);
+            gl.stencilOp(.KEEP, .KEEP, .REPLACE);
+
+            for (clip_paths) |clip_path| {
+                gl.drawArrays(.TRIANGLE_FAN, @intCast(clip_path.fill_offset), @intCast(clip_path.fill_count));
+            }
+        } else {
+            gl.stencilMask(0x7F);
+            gl.stencilFunc(.ALWAYS, 0x00, 0xFF);
+            gl.stencilOpSeparate(.FRONT, .KEEP, .KEEP, .INCR_WRAP);
+            gl.stencilOpSeparate(.BACK, .KEEP, .KEEP, .DECR_WRAP);
+            gl.disable(.CULL_FACE);
+            for (clip_paths) |clip_path| {
+                gl.drawArrays(.TRIANGLE_FAN, @intCast(clip_path.fill_offset), @intCast(clip_path.fill_count));
+            }
+            gl.enable(.CULL_FACE);
+
+            // cover step
+            gl.stencilFunc(.NOTEQUAL, 0x80, 0x7F);
+            gl.stencilMask(0xFF);
+            gl.stencilOp(.ZERO, .ZERO, .REPLACE);
+            gl.drawArrays(.TRIANGLE_STRIP, @intCast(call.triangle_offset), @intCast(call.triangle_count));
+        }
+    }
+
     fn fill(call: Call, ctx: *GLContext) void {
         const gl = ctx.gl;
-        const paths = ctx.paths.items[call.path_offset..][0..call.path_count];
 
-        // Draw shapes
         gl.enable(.STENCIL_TEST);
         defer gl.disable(.STENCIL_TEST);
-        gl.stencilMask(0xff);
-        gl.stencilFunc(.ALWAYS, 0x0, 0xff);
         gl.colorMask(false, false, false, false);
 
+        if (call.clip_path_count > 0) {
+            call.stencilClipPaths(ctx);
+
+            gl.stencilFunc(.EQUAL, 0x80, 0x80);
+            gl.stencilMask(0x7F); // Don't affect clip bit
+        } else {
+            gl.stencilFunc(.ALWAYS, 0x00, 0xFF);
+        }
+
+        const paths = ctx.paths.items[call.path_offset..][0..call.path_count];
+
         // set bindpoint for solid loc
-        setUniforms(ctx, call.uniform_offset, 0, 0);
+        setUniformsSimple(ctx);
         ctx.checkError("fill simple");
 
         gl.stencilOpSeparate(.FRONT, .KEEP, .KEEP, .INCR_WRAP);
@@ -330,112 +443,74 @@ const Call = struct {
         }
         gl.enable(.CULL_FACE);
 
-        // Draw anti-aliased pixels
         gl.colorMask(true, true, true, true);
 
-        setUniforms(ctx, call.uniform_offset + 1, call.image, call.colormap);
+        setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
         ctx.checkError("fill fill");
 
-        if (ctx.options.antialias) {
-            gl.stencilFunc(.EQUAL, 0x00, 0xff);
-            gl.stencilOp(.KEEP, .KEEP, .KEEP);
-            // Draw fringes
-            for (paths) |path| {
-                gl.drawArrays(.TRIANGLE_STRIP, @intCast(path.stroke_offset), @intCast(path.stroke_count));
-            }
-        }
-
         // Draw fill
-        gl.stencilFunc(.NOTEQUAL, 0x0, 0xff);
+        gl.stencilFunc(.NOTEQUAL, 0x00, 0x7F);
+        gl.stencilMask(0xFF);
         gl.stencilOp(.ZERO, .ZERO, .ZERO);
         gl.drawArrays(.TRIANGLE_STRIP, @intCast(call.triangle_offset), @intCast(call.triangle_count));
     }
 
-    fn convexFill(call: Call, ctx: *GLContext) void {
+    fn fillConvex(call: Call, ctx: *GLContext) void {
         const gl = ctx.gl;
+
+        defer if (call.clip_path_count > 0) gl.disable(.STENCIL_TEST);
+
+        if (call.clip_path_count > 0) {
+            gl.enable(.STENCIL_TEST);
+            gl.colorMask(false, false, false, false);
+            defer gl.colorMask(true, true, true, true);
+
+            call.stencilClipPaths(ctx);
+
+            gl.stencilFunc(.EQUAL, 0x80, 0xFF);
+            gl.stencilOp(.ZERO, .ZERO, .ZERO);
+        }
+
         const paths = ctx.paths.items[call.path_offset..][0..call.path_count];
 
         setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
-        ctx.checkError("convex fill");
+        ctx.checkError("fill convex");
 
         for (paths) |path| {
             gl.drawArrays(.TRIANGLE_FAN, @intCast(path.fill_offset), @intCast(path.fill_count));
-            // Draw fringes
-            if (path.stroke_count > 0) {
-                gl.drawArrays(.TRIANGLE_STRIP, @intCast(path.stroke_offset), @intCast(path.stroke_count));
-            }
         }
     }
 
     fn stroke(call: Call, ctx: *GLContext) void {
         const gl = ctx.gl;
+
+        defer if (call.clip_path_count > 0) gl.disable(.STENCIL_TEST);
+
+        if (call.clip_path_count > 0) {
+            gl.enable(.STENCIL_TEST);
+            gl.colorMask(false, false, false, false);
+            defer gl.colorMask(true, true, true, true);
+
+            call.stencilClipPaths(ctx);
+
+            gl.stencilFunc(.EQUAL, 0x80, 0xFF);
+            gl.stencilOp(.ZERO, .ZERO, .ZERO);
+        }
+
         const paths = ctx.paths.items[call.path_offset..][0..call.path_count];
 
-        if (ctx.options.stencil_strokes) {
-            gl.enable(.STENCIL_TEST);
-            defer gl.disable(.STENCIL_TEST);
-
-            gl.stencilMask(0xff);
-
-            // Fill the stroke base without overlap
-            gl.stencilFunc(.EQUAL, 0x0, 0xff);
-            gl.stencilOp(.KEEP, .KEEP, .INCR);
-            setUniforms(ctx, call.uniform_offset + 1, call.image, call.colormap);
-            ctx.checkError("stroke fill 0");
-            for (paths) |path| {
-                gl.drawArrays(
-                    .TRIANGLE_STRIP,
-                    @intCast(path.stroke_offset),
-                    @intCast(path.stroke_count),
-                );
-            }
-
-            // Draw anti-aliased pixels.
-            setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
-            gl.stencilFunc(.EQUAL, 0x00, 0xff);
-            gl.stencilOp(.KEEP, .KEEP, .KEEP);
-            for (paths) |path| {
-                gl.drawArrays(
-                    .TRIANGLE_STRIP,
-                    @intCast(path.stroke_offset),
-                    @intCast(path.stroke_count),
-                );
-            }
-
-            // Clear stencil buffer.
-            gl.colorMask(false, false, false, false);
-            gl.stencilFunc(.ALWAYS, 0x0, 0xff);
-            gl.stencilOp(.ZERO, .ZERO, .ZERO);
-            ctx.checkError("stroke fill 1");
-            for (paths) |path| {
-                gl.drawArrays(
-                    .TRIANGLE_STRIP,
-                    @intCast(path.stroke_offset),
-                    @intCast(path.stroke_count),
-                );
-            }
-            gl.colorMask(true, true, true, true);
-        } else {
-            setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
-            // Draw Strokes
-            for (paths) |path| {
-                gl.drawArrays(
-                    .TRIANGLE_STRIP,
-                    @intCast(path.stroke_offset),
-                    @intCast(path.stroke_count),
-                );
-            }
+        setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
+        // Draw Strokes
+        for (paths) |path| {
+            gl.drawArrays(.TRIANGLE_STRIP, @intCast(path.stroke_offset), @intCast(path.stroke_count));
         }
     }
 
     fn triangles(call: Call, ctx: *GLContext) void {
+        const gl = ctx.gl;
         setUniforms(ctx, call.uniform_offset, call.image, call.colormap);
         ctx.checkError("triangles fill");
-        ctx.gl.drawArrays(
-            .TRIANGLES,
-            @intCast(call.triangle_offset),
-            @intCast(call.triangle_count),
-        );
+        gl.drawArrays(.TRIANGLES, @intCast(call.triangle_offset), @intCast(call.triangle_count));
     }
 };
 
@@ -484,20 +559,10 @@ const FragUniforms = struct {
     extent: [2]f32,
     radius: f32,
     feather: f32,
-    stroke_mult: f32,
-    stroke_thr: f32,
     tex_type: f32,
     shaderType: f32,
 
-    fn fromPaint(
-        frag: *FragUniforms,
-        paint: *nvg.Paint,
-        scissor: *internal.Scissor,
-        width: f32,
-        fringe: f32,
-        stroke_thr: f32,
-        ctx: *GLContext,
-    ) i32 {
+    fn fromPaint(frag: *FragUniforms, paint: *nvg.Paint, scissor: *internal.Scissor, ctx: *GLContext) i32 {
         var invxform: [6]f32 = undefined;
 
         frag.* = std.mem.zeroes(FragUniforms);
@@ -516,13 +581,11 @@ const FragUniforms = struct {
             xformToMat3x4(&frag.scissor_mat, &invxform);
             frag.scissor_extent[0] = scissor.extent[0];
             frag.scissor_extent[1] = scissor.extent[1];
-            frag.scissor_scale[0] = @sqrt(scissor.xform[0] * scissor.xform[0] + scissor.xform[2] * scissor.xform[2]) / fringe;
-            frag.scissor_scale[1] = @sqrt(scissor.xform[1] * scissor.xform[1] + scissor.xform[3] * scissor.xform[3]) / fringe;
+            frag.scissor_scale[0] = @sqrt(scissor.xform[0] * scissor.xform[0] + scissor.xform[2] * scissor.xform[2]);
+            frag.scissor_scale[1] = @sqrt(scissor.xform[1] * scissor.xform[1] + scissor.xform[3] * scissor.xform[3]);
         }
 
-        std.mem.copy(f32, &frag.extent, &paint.extent);
-        frag.stroke_mult = (width * 0.5 + fringe * 0.5) / fringe;
-        frag.stroke_thr = stroke_thr;
+        @memcpy(&frag.extent, &paint.extent);
 
         if (paint.image.handle != 0) {
             const tex = ctx.findTexture(paint.image.handle) orelse return 0;
@@ -584,22 +647,24 @@ fn setUniforms(ctx: *GLContext, uniform_offset: u32, image: i32, colormap: i32) 
     // 	tex = glnvg__findTexture(gl->dummyTex);
     // }
     // glnvg__bindTexture(tex != NULL ? tex->tex : 0);
-    // ctx.checkError("tex paint tex");
+    ctx.checkError("tex paint tex");
+}
+
+fn setUniformsSimple(ctx: *GLContext) void {
+    const gl = ctx.gl;
+    var frag = std.mem.zeroes(FragUniforms);
+    frag.shaderType = @floatFromInt(@intFromEnum(ShaderType.simple));
+    gl.uniform4fv(ctx.shader.frag_loc, 11, @ptrCast(&frag));
 }
 
 fn renderCreate(uptr: *anyopaque) !void {
     const ctx = GLContext.castPtr(uptr);
     const gl = ctx.gl;
 
-    try ctx.shader.create(
-        gl,
-        if (ctx.options.antialias)
-            "#version 330 core\n#define EDGE_AA 1\n"
-        else
-            "#version 330 core\n",
-        @embedFile("shader/vert.glsl"),
-        @embedFile("shader/frag.glsl"),
-    );
+    const vertSrc = @embedFile("shader/vert.glsl");
+    const fragSrc = @embedFile("shader/frag.glsl");
+    const fragHeader = "#version 330 core\n";
+    try ctx.shader.create(gl, fragHeader, vertSrc, fragSrc);
 
     gl.genVertexArrays(1, &ctx.vert_arr);
     gl.genBuffers(1, &ctx.vert_buf);
@@ -609,14 +674,7 @@ fn renderCreate(uptr: *anyopaque) !void {
     // ctx.dummyTex = glnvg__renderCreateTexture(NVG_TEXTURE_ALPHA, 1, 1, 0, NULL);
 }
 
-fn renderCreateTexture(
-    uptr: *anyopaque,
-    tex_type: internal.TextureType,
-    w: i32,
-    h: i32,
-    flags: nvg.ImageFlags,
-    data: ?[*]const u8,
-) !i32 {
+fn renderCreateTexture(uptr: *anyopaque, tex_type: internal.TextureType, w: u32, h: u32, flags: nvg.ImageFlags, data: ?[]const u8) !i32 {
     const ctx = GLContext.castPtr(uptr);
     const gl = ctx.gl;
     var tex: *Texture = try ctx.allocTexture();
@@ -628,6 +686,7 @@ fn renderCreateTexture(
     tex.flags = flags;
     gl.bindTexture(.TEXTURE_2D, tex.tex);
 
+    const data_ptr = if (data) |d| d.ptr else null;
     switch (tex_type) {
         .none => {},
         .alpha => {
@@ -636,12 +695,12 @@ fn renderCreateTexture(
                 .TEXTURE_2D,
                 0,
                 .RED,
-                w,
-                h,
+                @intCast(w),
+                @intCast(h),
                 0,
                 .RED,
                 .UNSIGNED_BYTE,
-                data,
+                data_ptr,
             );
             gl.pixelStorei(.UNPACK_ALIGNMENT, 4);
         },
@@ -649,63 +708,53 @@ fn renderCreateTexture(
             .TEXTURE_2D,
             0,
             .RGBA,
-            w,
-            h,
+            @intCast(w),
+            @intCast(h),
             0,
             .RGBA,
             .UNSIGNED_BYTE,
-            data,
+            data_ptr,
         ),
     }
+
+    if (flags.generate_mipmaps) {
+        const min_filter: GL.Enum = if (flags.nearest) .NEAREST_MIPMAP_NEAREST else .LINEAR_MIPMAP_LINEAR;
+        gl.texParameteri(.TEXTURE_2D, .TEXTURE_MIN_FILTER, min_filter);
+    } else {
+        const min_filter: GL.Enum = if (flags.nearest) .NEAREST else .LINEAR;
+        gl.texParameteri(.TEXTURE_2D, .TEXTURE_MIN_FILTER, min_filter);
+    }
+    const mag_filter: GL.Enum = if (flags.nearest) .NEAREST else .LINEAR;
+    gl.texParameteri(.TEXTURE_2D, .TEXTURE_MAG_FILTER, mag_filter);
 
     const wrap_s: GL.Enum = if (flags.repeat_x) .REPEAT else .CLAMP_TO_EDGE;
     const wrap_t: GL.Enum = if (flags.repeat_y) .REPEAT else .CLAMP_TO_EDGE;
     gl.texParameteri(.TEXTURE_2D, .TEXTURE_WRAP_S, wrap_s);
     gl.texParameteri(.TEXTURE_2D, .TEXTURE_WRAP_T, wrap_t);
 
-    const mag_filter: GL.Enum = if (flags.nearest) .NEAREST else .LINEAR;
-    gl.texParameteri(.TEXTURE_2D, .TEXTURE_MAG_FILTER, mag_filter);
-
-    if (flags.generate_mipmaps) {
-        const min_filter: GL.Enum = if (flags.nearest)
-            .NEAREST_MIPMAP_NEAREST
-        else
-            .LINEAR_MIPMAP_LINEAR;
-        gl.texParameteri(.TEXTURE_2D, .TEXTURE_MIN_FILTER, min_filter);
-        gl.generateMipmap(.TEXTURE_2D);
-    } else {
-        const min_filter: GL.Enum = if (flags.nearest) .NEAREST else .LINEAR;
-        gl.texParameteri(.TEXTURE_2D, .TEXTURE_MIN_FILTER, min_filter);
-    }
+    if (flags.generate_mipmaps) gl.generateMipmap(.TEXTURE_2D);
 
     return tex.id;
 }
 
 fn renderDeleteTexture(uptr: *anyopaque, image: i32) void {
     const ctx = GLContext.castPtr(uptr);
+    const gl = ctx.gl;
     const tex = ctx.findTexture(image) orelse return;
-    if (tex.tex != 0) ctx.gl.deleteTextures(1, &tex.tex);
+    if (tex.tex != 0) gl.deleteTextures(1, &tex.tex);
     tex.* = std.mem.zeroes(Texture);
 }
 
-fn renderUpdateTexture(
-    uptr: *anyopaque,
-    image: i32,
-    x_arg: i32,
-    y: i32,
-    w_arg: i32,
-    h: i32,
-    data_arg: ?[*]const u8,
-) i32 {
+fn renderUpdateTexture(uptr: *anyopaque, image: i32, x_arg: u32, y: u32, w_arg: u32, h: u32, data_arg: ?[]const u8) i32 {
     _ = x_arg;
     _ = w_arg;
     const ctx = GLContext.castPtr(uptr);
-    const tex = ctx.findTexture(image) orelse return 0;
     const gl = ctx.gl;
+    const tex = ctx.findTexture(image) orelse return 0;
 
     // No support for all of skip, need to update a whole row at a time.
     const color_size: u32 = if (tex.tex_type == .rgba) 4 else 1;
-    const y0: u32 = @intCast(y * tex.width);
+    const y0: u32 = y * tex.width;
     const data = &data_arg.?[y0 * color_size];
     const x = 0;
     const w = tex.width;
@@ -715,17 +764,17 @@ fn renderUpdateTexture(
         .none => {},
         .alpha => {
             gl.pixelStorei(.UNPACK_ALIGNMENT, 1);
-            gl.texSubImage2D(.TEXTURE_2D, 0, x, y, w, h, .RED, .UNSIGNED_BYTE, data);
+            gl.texSubImage2D(.TEXTURE_2D, 0, x, @intCast(y), @intCast(w), @intCast(h), .RED, .UNSIGNED_BYTE, data);
             gl.pixelStorei(.UNPACK_ALIGNMENT, 4);
         },
-        .rgba => gl.texSubImage2D(.TEXTURE_2D, 0, x, y, w, h, .RGBA, .UNSIGNED_BYTE, data),
+        .rgba => gl.texSubImage2D(.TEXTURE_2D, 0, x, @intCast(y), @intCast(w), @intCast(h), .RGBA, .UNSIGNED_BYTE, data),
     }
     gl.bindTexture(.TEXTURE_2D, 0);
 
     return 1;
 }
 
-fn renderGetTextureSize(uptr: *anyopaque, image: i32, w: *i32, h: *i32) i32 {
+fn renderGetTextureSize(uptr: *anyopaque, image: i32, w: *u32, h: *u32) i32 {
     const ctx = GLContext.castPtr(uptr);
     const tex = ctx.findTexture(image) orelse return 0;
     w.* = tex.width;
@@ -768,12 +817,7 @@ fn renderFlush(uptr: *anyopaque) void {
 
         gl.bindVertexArray(ctx.vert_arr);
         gl.bindBuffer(.ARRAY_BUFFER, ctx.vert_buf);
-        gl.bufferData(
-            .ARRAY_BUFFER,
-            @intCast(ctx.verts.items.len * @sizeOf(internal.Vertex)),
-            ctx.verts.items.ptr,
-            .STREAM_DRAW,
-        );
+        gl.bufferData(.ARRAY_BUFFER, @intCast(ctx.verts.items.len * @sizeOf(internal.Vertex)), ctx.verts.items.ptr, .STREAM_DRAW);
         gl.enableVertexAttribArray(0);
         gl.enableVertexAttribArray(1);
         gl.vertexAttribPointer(0, 2, .FLOAT, false, @sizeOf(internal.Vertex), null);
@@ -785,16 +829,10 @@ fn renderFlush(uptr: *anyopaque) void {
         gl.uniform2fv(ctx.shader.view_loc, 1, &ctx.view[0]);
 
         for (ctx.calls.items) |call| {
-            gl.blendFuncSeparate(
-                call.blend_func.src_rgb,
-                call.blend_func.dst_rgb,
-                call.blend_func.src_alpha,
-                call.blend_func.dst_alpha,
-            );
+            gl.blendFuncSeparate(call.blend_func.src_rgb, call.blend_func.dst_rgb, call.blend_func.src_alpha, call.blend_func.dst_alpha);
             switch (call.call_type) {
-                .none => {},
                 .fill => call.fill(ctx),
-                .convexfill => call.convexFill(ctx),
+                .fill_convex => call.fillConvex(ctx),
                 .stroke => call.stroke(ctx),
                 .triangles => call.triangles(ctx),
             }
@@ -804,13 +842,15 @@ fn renderFlush(uptr: *anyopaque) void {
         gl.disableVertexAttribArray(1);
         gl.disable(.CULL_FACE);
         gl.bindBuffer(.ARRAY_BUFFER, 0);
-        gl.bindVertexArray(0);
         gl.useProgram(0);
         gl.bindTexture(.TEXTURE_2D, 0);
     }
 
     // Reset calls
-    ctx.clearFrameState();
+    ctx.verts.clearRetainingCapacity();
+    ctx.paths.clearRetainingCapacity();
+    ctx.calls.clearRetainingCapacity();
+    ctx.uniforms.clearRetainingCapacity();
 }
 
 fn renderFill(
@@ -818,8 +858,8 @@ fn renderFill(
     paint: *nvg.Paint,
     composite_operation: nvg.CompositeOperationState,
     scissor: *internal.Scissor,
-    fringe: f32,
     bounds: [4]f32,
+    clip_paths: []const internal.Path,
     paths: []const internal.Path,
 ) void {
     const ctx = GLContext.castPtr(uptr);
@@ -827,23 +867,48 @@ fn renderFill(
 
     const call = ctx.calls.addOne(frame_alloc) catch return;
     call.* = std.mem.zeroes(Call);
-
     call.call_type = .fill;
-    call.triangle_count = 4;
     if (paths.len == 1 and paths[0].convex) {
-        call.call_type = .convexfill;
-        call.triangle_count = 0; // Bounding box fill quad not needed for convex fill
+        call.call_type = .fill_convex;
     }
+    call.triangle_count = if (call.call_type == .fill or clip_paths.len > 0) 4 else 0;
+
+    // Allocate vertices for all the paths.
+    const maxverts = maxVertCount(clip_paths) + maxVertCount(paths) + call.triangle_count;
+    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
+
+    if (call.triangle_count > 0) {
+        // Quad
+        call.triangle_offset = @intCast(ctx.verts.items.len);
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[3], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[1], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[3], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[1], .u = 0.5, .v = 1.0 });
+    }
+
+    if (clip_paths.len > 0) {
+        // TODO: optimization for convex clip paths (clip_paths.len == 1 and clip_paths[0].convex)
+        ctx.paths.ensureUnusedCapacity(frame_alloc, clip_paths.len) catch return;
+        call.clip_path_offset = @intCast(ctx.paths.items.len);
+        call.clip_path_count = @intCast(clip_paths.len);
+
+        for (clip_paths) |clip_path| {
+            const copy = ctx.paths.addOneAssumeCapacity();
+            copy.* = std.mem.zeroes(Path);
+            if (clip_path.fill.len > 0) {
+                copy.fill_offset = @intCast(ctx.verts.items.len);
+                copy.fill_count = @intCast(clip_path.fill.len);
+                ctx.verts.appendSliceAssumeCapacity(clip_path.fill);
+            }
+        }
+    }
+
     ctx.paths.ensureUnusedCapacity(frame_alloc, paths.len) catch return;
     call.path_offset = @intCast(ctx.paths.items.len);
     call.path_count = @intCast(paths.len);
     call.image = paint.image.handle;
     call.colormap = paint.colormap.handle;
     call.blend_func = Blend.fromOperation(composite_operation);
-
-    // Allocate vertices for all the paths.
-    const maxverts = maxVertCount(paths) + call.triangle_count;
-    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
 
     for (paths) |path| {
         const copy = ctx.paths.addOneAssumeCapacity();
@@ -860,30 +925,10 @@ fn renderFill(
         }
     }
 
-    // Setup uniforms for draw calls
-    if (call.call_type == .fill) {
-        // Quad
-        call.triangle_offset = @intCast(ctx.verts.items.len);
-        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[3], .u = 0.5, .v = 1.0 });
-        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[1], .u = 0.5, .v = 1.0 });
-        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[3], .u = 0.5, .v = 1.0 });
-        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[1], .u = 0.5, .v = 1.0 });
-
-        call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 2) catch return;
-        // Simple shader for stencil
-        const frag = ctx.uniforms.addOneAssumeCapacity();
-        frag.* = std.mem.zeroes(FragUniforms);
-        frag.stroke_thr = -1.0;
-        frag.shaderType = @floatFromInt(@intFromEnum(ShaderType.simple));
-        // Fill shader
-        _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1.0, ctx);
-    } else {
-        call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
-        // Fill shader
-        _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1.0, ctx);
-    }
+    // Fill shader
+    call.uniform_offset = @intCast(ctx.uniforms.items.len);
+    ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
+    _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, ctx);
 }
 
 fn renderStroke(
@@ -891,8 +936,8 @@ fn renderStroke(
     paint: *nvg.Paint,
     composite_operation: nvg.CompositeOperationState,
     scissor: *internal.Scissor,
-    fringe: f32,
-    strokeWidth: f32,
+    bounds: [4]f32,
+    clip_paths: []const internal.Path,
     paths: []const internal.Path,
 ) void {
     const ctx = GLContext.castPtr(uptr);
@@ -900,18 +945,45 @@ fn renderStroke(
 
     const call = ctx.calls.addOne(frame_alloc) catch return;
     call.* = std.mem.zeroes(Call);
-
     call.call_type = .stroke;
+    call.triangle_count = if (clip_paths.len > 0) 4 else 0;
+
+    // Allocate vertices for all the paths.
+    const maxverts = maxVertCount(clip_paths) + maxVertCount(paths) + call.triangle_count;
+    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
+
+    if (call.triangle_count > 0) {
+        // Quad
+        call.triangle_offset = @intCast(ctx.verts.items.len);
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[3], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[2], .y = bounds[1], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[3], .u = 0.5, .v = 1.0 });
+        ctx.verts.appendAssumeCapacity(.{ .x = bounds[0], .y = bounds[1], .u = 0.5, .v = 1.0 });
+    }
+
+    if (clip_paths.len > 0) {
+        // TODO: optimization for convex clip paths (clip_paths.len == 1 and clip_paths[0].convex)
+        ctx.paths.ensureUnusedCapacity(frame_alloc, clip_paths.len) catch return;
+        call.clip_path_offset = @intCast(ctx.paths.items.len);
+        call.clip_path_count = @intCast(clip_paths.len);
+
+        for (clip_paths) |clip_path| {
+            const copy = ctx.paths.addOneAssumeCapacity();
+            copy.* = std.mem.zeroes(Path);
+            if (clip_path.fill.len > 0) {
+                copy.fill_offset = @intCast(ctx.verts.items.len);
+                copy.fill_count = @intCast(clip_path.fill.len);
+                ctx.verts.appendSliceAssumeCapacity(clip_path.fill);
+            }
+        }
+    }
+
     ctx.paths.ensureUnusedCapacity(frame_alloc, paths.len) catch return;
     call.path_offset = @intCast(ctx.paths.items.len);
     call.path_count = @intCast(paths.len);
     call.image = paint.image.handle;
     call.colormap = paint.colormap.handle;
     call.blend_func = Blend.fromOperation(composite_operation);
-
-    // Allocate vertices for all the paths.
-    const maxverts = maxVertCount(paths);
-    ctx.verts.ensureUnusedCapacity(frame_alloc, maxverts) catch return;
 
     for (paths) |path| {
         const copy = ctx.paths.addOneAssumeCapacity();
@@ -923,18 +995,10 @@ fn renderStroke(
         }
     }
 
-    if (ctx.options.stencil_strokes) {
-        // Fill shader
-        call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        ctx.uniforms.ensureUnusedCapacity(frame_alloc, 2) catch return;
-        _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, fringe, fringe, -1, ctx);
-        _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, strokeWidth, fringe, 1.0 - 0.5 / 255.0, ctx);
-    } else {
-        // Fill shader
-        call.uniform_offset = @intCast(ctx.uniforms.items.len);
-        _ = ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
-        _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, strokeWidth, fringe, -1, ctx);
-    }
+    // Fill shader
+    call.uniform_offset = @intCast(ctx.uniforms.items.len);
+    _ = ctx.uniforms.ensureUnusedCapacity(frame_alloc, 1) catch return;
+    _ = ctx.uniforms.addOneAssumeCapacity().fromPaint(paint, scissor, ctx);
 }
 
 fn renderTriangles(
@@ -942,7 +1006,6 @@ fn renderTriangles(
     paint: *nvg.Paint,
     comp_op: nvg.CompositeOperationState,
     scissor: *internal.Scissor,
-    fringe: f32,
     verts: []const internal.Vertex,
 ) void {
     const ctx = GLContext.castPtr(uptr);
@@ -962,7 +1025,7 @@ fn renderTriangles(
 
     call.uniform_offset = @intCast(ctx.uniforms.items.len);
     const frag = ctx.uniforms.addOne(frame_alloc) catch return;
-    _ = frag.fromPaint(paint, scissor, 1, fringe, -1, ctx);
+    _ = frag.fromPaint(paint, scissor, ctx);
     frag.shaderType = @floatFromInt(@intFromEnum(ShaderType.image));
 }
 

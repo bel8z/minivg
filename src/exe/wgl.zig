@@ -53,23 +53,65 @@ const PFD_DEPTH_DONTCARE = 0x20000000;
 const PFD_DOUBLEBUFFER_DONTCARE = 0x40000000;
 const PFD_STEREO_DONTCARE = 0x80000000;
 
+const DWORD = win32.DWORD;
+const WORD = win32.WORD;
+const BYTE = win32.BYTE;
+
+const PIXELFORMATDESCRIPTOR = extern struct {
+    nSize: WORD = @sizeOf(PIXELFORMATDESCRIPTOR),
+    nVersion: WORD,
+    dwFlags: DWORD,
+    iPixelType: BYTE,
+    cColorBits: BYTE,
+    cRedBits: BYTE,
+    cRedShift: BYTE,
+    cGreenBits: BYTE,
+    cGreenShift: BYTE,
+    cBlueBits: BYTE,
+    cBlueShift: BYTE,
+    cAlphaBits: BYTE,
+    cAlphaShift: BYTE,
+    cAccumBits: BYTE,
+    cAccumRedBits: BYTE,
+    cAccumGreenBits: BYTE,
+    cAccumBlueBits: BYTE,
+    cAccumAlphaBits: BYTE,
+    cDepthBits: BYTE,
+    cStencilBits: BYTE,
+    cAuxBuffers: BYTE,
+    iLayerType: BYTE,
+    bReserved: BYTE,
+    dwLayerMask: DWORD,
+    dwVisibleMask: DWORD,
+    dwDamageMask: DWORD,
+};
+
+extern "gdi32" fn ChoosePixelFormat(
+    hdc: ?win32.HDC,
+    ppfd: ?*const PIXELFORMATDESCRIPTOR,
+) callconv(WINAPI) c_int;
+
 extern "gdi32" fn DescribePixelFormat(
     hdc: win32.HDC,
     iPixelFormat: c_int,
     nBytes: c_uint,
-    ppfd: [*c]win32.gdi32.PIXELFORMATDESCRIPTOR,
+    ppfd: [*c]PIXELFORMATDESCRIPTOR,
 ) callconv(WINAPI) win32.BOOL;
 
 extern "gdi32" fn SetPixelFormat(
     hdc: win32.HDC,
     iPixelFormat: c_int,
-    ppfd: [*c]const win32.gdi32.PIXELFORMATDESCRIPTOR,
+    ppfd: [*c]const PIXELFORMATDESCRIPTOR,
 ) callconv(WINAPI) win32.BOOL;
 
+extern "gdi32" fn SwapBuffers(hdc: ?win32.HDC) callconv(WINAPI) win32.BOOL;
+
+extern "gdi32" fn wglCreateContext(dc: win32.HDC) callconv(WINAPI) ?win32.HGLRC;
 extern "gdi32" fn wglDeleteContext(hglrc: win32.HGLRC) callconv(WINAPI) win32.BOOL;
 extern "gdi32" fn wglGetProcAddress(name: win32.LPCSTR) callconv(WINAPI) ?win32.FARPROC;
 extern "gdi32" fn wglGetCurrentContext() callconv(WINAPI) ?win32.HGLRC;
 extern "gdi32" fn wglGetCurrentDC() callconv(WINAPI) win32.HDC;
+extern "gdi32" fn wglMakeCurrent(hdc: ?win32.HDC, hglrc: ?win32.HGLRC) callconv(WINAPI) win32.BOOL;
 
 const WglCreateContextAttribsARBFn = *const fn (
     hdc: win32.HDC,
@@ -99,9 +141,9 @@ pub fn init() !void {
     // that aren't available in PIXELFORMATDESCRIPTOR), but we can't load and use that before we
     // have a context.
 
-    const window_class = win32.user32.WNDCLASSEXW{
-        .style = win32.user32.CS_HREDRAW | win32.user32.CS_VREDRAW | win32.user32.CS_OWNDC,
-        .lpfnWndProc = win32.user32.DefWindowProcW,
+    const window_class = win32.WNDCLASSEXW{
+        .style = win32.CS_HREDRAW | win32.CS_VREDRAW | win32.CS_OWNDC,
+        .lpfnWndProc = win32.DefWindowProcW,
         .hInstance = win32.getCurrentInstance(),
         .lpszClassName = L("WGL_Boostrap_Window"),
         .lpszMenuName = null,
@@ -119,21 +161,21 @@ pub fn init() !void {
         window_class.lpszClassName,
         window_class.lpszClassName,
         win32.WS_OVERLAPPEDWINDOW,
-        win32.user32.CW_USEDEFAULT,
-        win32.user32.CW_USEDEFAULT,
-        win32.user32.CW_USEDEFAULT,
-        win32.user32.CW_USEDEFAULT,
+        win32.CW_USEDEFAULT,
+        win32.CW_USEDEFAULT,
+        win32.CW_USEDEFAULT,
+        win32.CW_USEDEFAULT,
         null,
         null,
         window_class.hInstance,
         null,
     );
-    defer win32.user32.destroyWindow(dummy_window) catch unreachable;
+    defer win32.destroyWindow(dummy_window) catch unreachable;
 
-    const dummy_dc = try win32.user32.getDC(dummy_window);
-    defer _ = win32.user32.releaseDC(dummy_window, dummy_dc);
+    const dummy_dc = try win32.getDC(dummy_window);
+    defer _ = win32.releaseDC(dummy_window, dummy_dc);
 
-    var pfd = win32.gdi32.PIXELFORMATDESCRIPTOR{
+    var pfd = PIXELFORMATDESCRIPTOR{
         .nVersion = 1,
         .iPixelType = PFD_TYPE_RGBA,
         .dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
@@ -161,12 +203,12 @@ pub fn init() !void {
         .dwDamageMask = 0,
     };
 
-    const pixel_format = win32.gdi32.ChoosePixelFormat(dummy_dc, &pfd);
+    const pixel_format = ChoosePixelFormat(dummy_dc, &pfd);
     if (pixel_format == 0) return error.Unexpected;
 
     if (SetPixelFormat(dummy_dc, pixel_format, &pfd) == 0) return error.Unexpected;
 
-    const dummy_context = win32.gdi32.wglCreateContext(dummy_dc) orelse return error.Unexpected;
+    const dummy_context = wglCreateContext(dummy_dc) orelse return error.Unexpected;
     defer _ = wglDeleteContext(dummy_context);
 
     try makeCurrent(dummy_dc, dummy_context);
@@ -237,7 +279,7 @@ pub fn createContext(dc: win32.HDC, info: ContextInfo) !win32.HGLRC {
 
     std.debug.assert(num_formats > 0);
 
-    var pfd: win32.gdi32.PIXELFORMATDESCRIPTOR = undefined;
+    var pfd: PIXELFORMATDESCRIPTOR = undefined;
     if (DescribePixelFormat(dc, pixel_format, @sizeOf(@TypeOf(pfd)), &pfd) == 0) return error.DescribePixelFormatFailed;
     if (SetPixelFormat(dc, pixel_format, &pfd) == 0) return error.SetPixelFormatFailed;
 
@@ -268,7 +310,7 @@ pub fn deleteContext(context: win32.HGLRC) !void {
 }
 
 pub fn makeCurrent(dc: win32.HDC, gl_context: ?win32.HGLRC) !void {
-    if (!win32.gdi32.wglMakeCurrent(dc, gl_context)) return error.Unexpected;
+    if (wglMakeCurrent(dc, gl_context) == win32.FALSE) return error.Unexpected;
 }
 
 pub fn getCurrentContext() ?win32.HGLRC {
@@ -280,7 +322,7 @@ pub fn getCurrentDC() ?win32.HDC {
 }
 
 pub fn swapBuffers(dc: win32.HDC) !void {
-    if (!win32.gdi32.SwapBuffers(dc)) return error.Unexpected;
+    if (SwapBuffers(dc) == win32.FALSE) return error.Unexpected;
 }
 
 pub fn setSwapInterval(interval: c_int) !void {

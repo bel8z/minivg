@@ -174,7 +174,7 @@ fn demo(
 
     // Widgets
     drawWindow(nvg, "Widgets `n Stuff", 50, 50, 300, 400);
-    var x: f32 = 60;
+    const x: f32 = 60;
     var y: f32 = 95;
     drawSearchBox(nvg, "Search", x, y, 280, 25);
     y += 40;
@@ -764,13 +764,12 @@ fn drawEyes(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, mx: f32, my: f32, t: f3
     nvg.fill();
 }
 
-fn drawParagraph(nvg: NanoVg, x_arg: f32, y_arg: f32, width: f32, height: f32, mx: f32, my: f32) void {
-    var x = x_arg;
+fn drawParagraph(nvg: NanoVg, x: f32, y_arg: f32, width: f32, height: f32, mx: f32, my: f32) void {
     var y = y_arg;
     _ = height;
     var rows: [3]NanoVg.TextRow = undefined;
     var glyphs: [100]NanoVg.GlyphPosition = undefined;
-    var text = "This is longer chunk of text.\n  \n  Would have used lorem ipsum but she    was busy jumping over the lazy dog with the fox and all the men who came to the aid of the party.🎉";
+    const text = "This is longer chunk of text.\n  \n  Would have used lorem ipsum but she    was busy jumping over the lazy dog with the fox and all the men who came to the aid of the party.🎉";
     var start: []const u8 = undefined;
     var lnum: i32 = 0;
     var px: f32 = undefined;
@@ -1020,8 +1019,8 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
         var ty = y + 10;
         tx += @as(f32, @floatFromInt(i % 2)) * (thumb + 10.0);
         ty += @as(f32, @floatFromInt(i / 2)) * (thumb + 10.0);
-        var imgw: i32 = undefined;
-        var imgh: i32 = undefined;
+        var imgw: u32 = undefined;
+        var imgh: u32 = undefined;
         nvg.imageSize(image, &imgw, &imgh);
         var ix: f32 = undefined;
         var iy: f32 = undefined;

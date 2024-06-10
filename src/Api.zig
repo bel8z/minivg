@@ -56,15 +56,15 @@ update: *const fn (
 ) f32,
 
 pub const Loader = struct {
-    dir: std.fs.IterableDir,
+    dir: std.fs.Dir,
     lib: ?win32.HMODULE = null,
     timestamp: i64 = -1,
 
     pub fn init(api_: *Api) !Loader {
         var self = Loader{
-            .dir = try std.fs.cwd().openIterableDir(
+            .dir = try std.fs.cwd().openDir(
                 "../lib",
-                .{ .access_sub_paths = false, .no_follow = true },
+                .{ .access_sub_paths = false, .no_follow = true, .iterate = true },
             ),
         };
 
@@ -135,8 +135,8 @@ pub const Loader = struct {
 
     fn delete(self: *Loader, timestamp: i64) !void {
         var utf8: [256]u8 = undefined;
-        try self.dir.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.dll", .{timestamp}));
-        try self.dir.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.lib", .{timestamp}));
-        try self.dir.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.pdb", .{timestamp}));
+        try self.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.dll", .{timestamp}));
+        try self.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.lib", .{timestamp}));
+        try self.dir.deleteFile(try std.fmt.bufPrint(&utf8, "app-{}.pdb", .{timestamp}));
     }
 };

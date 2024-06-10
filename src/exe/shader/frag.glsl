@@ -20,10 +20,8 @@ out vec4 fragColor;
 #define extent frag[9].xy
 #define radius frag[9].z
 #define feather frag[9].w
-#define strokeMult frag[10].x
-#define strokeThr frag[10].y
-#define texType int(frag[10].z)
-#define type int(frag[10].w)
+#define texType int(frag[10].x)
+#define type int(frag[10].y)
 
 float sdRoundRect(vec2 pt, vec2 ext, float rad) {
     vec2 ext2 = ext - vec2(rad,rad);
@@ -37,33 +35,19 @@ float scissorMask(vec2 p) {
     sc = vec2(0.5,0.5) - sc * scissorScale;
     return clamp(sc.x,0.0,1.0) * clamp(sc.y,0.0,1.0);
 }
-#ifdef EDGE_AA
-// Stroke - from [0..1] to clipped pyramid, where the slope is 1px.
-float strokeMask() {
-    return min(1.0, (1.0-abs(ftcoord.x*2.0-1.0))*strokeMult) * min(1.0, ftcoord.y);
-}
-#endif
 
 void main(void) {
    vec4 result;
     float scissor = scissorMask(fpos);
-#ifdef EDGE_AA
-    float strokeAlpha = strokeMask();
-    if (strokeAlpha < strokeThr) discard;
-#else
-    float strokeAlpha = 1.0;
-#endif
-    if (type == 0) { 
-        // Gradient
+    if (type == 0) { // Gradient
         // Calculate gradient color using box gradient
         vec2 pt = (paintMat * vec3(fpos,1.0)).xy;
         float d = clamp((sdRoundRect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
         vec4 color = mix(innerCol,outerCol,d);
         // Combine alpha
-        color *= strokeAlpha * scissor;
+        color *= scissor;
         result = color;
-    } else if (type == 1) { 
-        // Image
+    } else if (type == 1) { // Image
         // Calculate color fron texture
         vec2 pt = (paintMat * vec3(fpos,1.0)).xy / extent;
         vec4 color = texture(tex, pt);
@@ -76,13 +60,11 @@ void main(void) {
         // Apply color tint and alpha.
         color *= innerCol;
         // Combine alpha
-        color *= strokeAlpha * scissor;
+        color *= scissor;
         result = color;
-    } else if (type == 2) { 
-        // Stencil fill
+    } else if (type == 2) { // Stencil fill
         result = vec4(1,1,1,1);
-    } else if (type == 3) { 
-        // Textured tris
+    } else if (type == 3) { // Textured tris
         vec4 color = texture(tex, ftcoord);
         if (texType == 1) color = vec4(color.xyz*color.w,color.w);
         if (texType == 2) color = vec4(color.x);
@@ -90,7 +72,6 @@ void main(void) {
             color = texture(colormap, vec2(color.x, 0.5));
             color = vec4(color.xyz*color.w,color.w);
         }
-
         color *= scissor;
         result = color * innerCol;
     }

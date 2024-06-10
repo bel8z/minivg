@@ -76,7 +76,7 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
     const info = @typeInfo(Vec).Struct;
     const fields = info.fields;
 
-    comptime if (info.layout != .Extern) {
+    comptime if (info.layout != .@"extern") {
         @compileError("Only structs with extern layout are currently supported");
     };
 
