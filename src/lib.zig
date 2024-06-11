@@ -46,6 +46,11 @@ rand: std.Random.DefaultPrng = undefined,
 particles: std.ArrayListUnmanaged(Particle) = .{},
 prev_win: Vec2 = Vec2.init(-1),
 
+const p_velocity = 1000.0;
+const p_gravity = 1000.0;
+const p_damping = 0.8;
+const p_radius = 20.0;
+
 const Particle = struct {
     pos: Vec2 = {},
     vel: Vec2 = {},
@@ -151,7 +156,7 @@ pub fn update(
 }
 
 fn frame(self: *App) f32 {
-    const t = @as(f32, @floatFromInt(self.watch.read())) / 1000_000_000.0;
+    const t = f32FromInt(self.watch.read()) / 1000_000_000.0;
     const dt = t - self.elapsed;
     self.elapsed = t;
     return dt;
@@ -164,15 +169,8 @@ fn subframe_simulation(
     viewport: Rect,
     real_dt: f32,
 ) void {
-    const velocity = 1000.0;
-    const gravity = 1000.0;
-    const damping = 0.8;
-    const radius = 20.0;
-
-    const target_fps: f32 = 480;
-    const target_dt = @min(real_dt, 1.0 / target_fps);
-
-    const scale = target_dt / real_dt;
+    const target_fps: f32 = 60;
+    const target_dt = 1.0 / target_fps;
 
     const winsize = viewport.size;
     const winpos = viewport.origin;
@@ -183,7 +181,27 @@ fn subframe_simulation(
         dwinpos = winpos.sub(self.prev_win);
         self.prev_win = winpos;
     }
-    const offset = dwinpos.mul(scale);
+
+    // Update in exact time steps; the last one may be longer (or the only one
+    // in case of higher screen framerates) and is performed separately
+    var remaining_dt: f32 = real_dt;
+    var offset = dwinpos;
+    if (target_dt < real_dt) {
+        const steps: usize = @intFromFloat(@floor(real_dt / target_dt));
+        remaining_dt = real_dt - target_dt * f32FromInt(steps - 1);
+        offset = dwinpos.mul(target_dt / real_dt);
+
+        for (1..steps) |i| {
+            const t = target_dt * f32FromInt(i);
+            const x = t / real_dt;
+            assert(x < 1);
+            // const f = smoothstep(x);
+            // const f = sineStep(x);
+            const f = x * x; // Exponential decay
+            self.updateParticles(nvg, winsize, offset, target_dt, f);
+        }
+    }
+    self.updateParticles(nvg, winsize, offset, remaining_dt, 1);
 
     if (m.click()) {
         const rand = self.rand.random();
@@ -192,58 +210,72 @@ fn subframe_simulation(
         p.pos = m.pos;
         p.col = hsv(360 * rand.float(f32), 0.5, 0.8);
         p.vel = .{
-            .x = velocity * math.cos(ang),
-            .y = velocity * math.sin(ang),
+            .x = p_velocity * math.cos(ang),
+            .y = p_velocity * math.sin(ang),
         };
+        renderParticle(nvg, p, 1);
     }
+}
 
-    const subframes = @as(usize, @intFromFloat(@round(real_dt / target_dt)));
-    for (1..subframes + 1) |i| {
-        for (self.particles.items) |*item| {
-            item.vel.y += gravity * target_dt;
-            item.pos = item.pos.sub(offset).add(item.vel.mul(target_dt));
+fn smoothstep(x: f32) f32 {
+    return x * x * x * (x * (6.0 * x - 15.0) + 10.0);
+}
 
-            if (item.pos.x - radius <= 0) {
-                item.pos.x = radius;
-                item.vel.x *= -damping;
-                item.vel.x += offset.x * 300;
-            } else if (item.pos.x + radius >= winsize.x) {
-                item.pos.x = winsize.x - radius;
-                item.vel.x *= -damping;
-                item.vel.x += offset.x * 300;
-            }
+fn sineStep(x: f32) f32 {
+    const t = x - 0.5;
 
-            if (item.pos.y - radius <= 0) {
-                item.pos.y = radius;
-                item.vel.y *= -damping;
-                item.vel.y += offset.y * 300;
-            } else if (item.pos.y + radius >= winsize.y) {
-                item.pos.y = winsize.y - radius;
-                item.vel.y *= -damping;
-                item.vel.y += offset.y * 300;
-            }
+    const ang = math.pi * (@abs(t) - 0.5);
+    const ang_sq = ang * ang;
+    const pi_sq = math.pi * math.pi;
 
-            var col = item.col;
-            col.a = @as(f32, @floatFromInt(i)) * target_dt / real_dt;
+    const cos = 1 - 5 * ang_sq / (ang_sq + pi_sq);
+    return 0.5 * (1 + cos * math.sign(t));
+}
 
-            nvg.beginPath();
-            nvg.circle(item.pos.x, item.pos.y, radius);
-            nvg.strokeColor(col);
-            nvg.strokeWidth(0.2 * radius);
-            nvg.stroke();
+fn updateParticles(
+    self: *App,
+    nvg: NanoVg,
+    win_size: Vec2,
+    win_offset: Vec2,
+    dt: f32,
+    f: f32,
+) void {
+    for (self.particles.items) |*item| {
+        item.vel.y += p_gravity * dt;
+        item.pos = item.pos.sub(win_offset).add(item.vel.mul(dt));
+
+        if (item.pos.x - p_radius <= 0) {
+            item.pos.x = p_radius;
+            item.vel.x *= -p_damping;
+            item.vel.x += win_offset.x * 300;
+        } else if (item.pos.x + p_radius >= win_size.x) {
+            item.pos.x = win_size.x - p_radius;
+            item.vel.x *= -p_damping;
+            item.vel.x += win_offset.x * 300;
         }
-    }
 
-    nvg.fontSize(15.0);
-    nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
-    nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
-    var txt_bounds: [4]f32 = undefined;
-    var txt_buf: [16]u8 = undefined;
-    const txt = std.fmt.bufPrint(&txt_buf, "X{}", .{subframes}) catch unreachable;
-    _ = nvg.textBounds(0, 0, txt, &txt_bounds);
-    const txt_h = txt_bounds[3] - txt_bounds[1];
-    _ = nvg.text(0, winsize.y - txt_h, txt);
+        if (item.pos.y - p_radius <= 0) {
+            item.pos.y = p_radius;
+            item.vel.y *= -p_damping;
+            item.vel.y += win_offset.y * 300;
+        } else if (item.pos.y + p_radius >= win_size.y) {
+            item.pos.y = win_size.y - p_radius;
+            item.vel.y *= -p_damping;
+            item.vel.y += win_offset.y * 300;
+        }
+
+        renderParticle(nvg, item, f);
+    }
+}
+
+fn renderParticle(nvg: NanoVg, p: *const Particle, f: f32) void {
+    var col = p.col;
+    col.a = f;
+    nvg.beginPath();
+    nvg.circle(p.pos.x, p.pos.y, p_radius);
+    nvg.strokeColor(col);
+    nvg.strokeWidth(0.2 * p_radius);
+    nvg.stroke();
 }
 
 fn hsv(h: f32, s: f32, v: f32) NanoVg.Color {
@@ -1010,7 +1042,7 @@ fn drawGraph(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     var sx: [6]f32 = undefined;
     var sy: [6]f32 = undefined;
     for (samples, 0..) |sample, i| {
-        sx[i] = x + @as(f32, @floatFromInt(i)) * dx;
+        sx[i] = x + f32FromInt(i) * dx;
         sy[i] = y + h * sample * 0.8;
     }
 
@@ -1099,7 +1131,7 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
     const cornerRadius = 3.0;
     const thumb = 60.0;
     const arry = 30.5;
-    const stackh = @as(f32, @floatFromInt(images.len / 2)) * (thumb + 10.0) + 10.0;
+    const stackh = f32FromInt(images.len / 2) * (thumb + 10.0) + 10.0;
     const u = (1 + @cos(t * 0.5)) * 0.5;
     const uu = (1 - @cos(t * 0.2)) * 0.5;
 
@@ -1127,13 +1159,13 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
     nvg.scissor(x, y, w, h);
     nvg.translate(0, -(stackh - h) * u);
 
-    const dv = 1.0 / @as(f32, @floatFromInt(images.len - 1));
+    const dv = 1.0 / f32FromInt(images.len - 1);
 
     for (images, 0..) |image, i| {
         var tx = x + 10;
         var ty = y + 10;
-        tx += @as(f32, @floatFromInt(i % 2)) * (thumb + 10.0);
-        ty += @as(f32, @floatFromInt(i / 2)) * (thumb + 10.0);
+        tx += f32FromInt(i % 2) * (thumb + 10.0);
+        ty += f32FromInt(i / 2) * (thumb + 10.0);
         var imgw: u32 = undefined;
         var imgh: u32 = undefined;
         nvg.imageSize(image, &imgw, &imgh);
@@ -1143,17 +1175,17 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
         var ih: f32 = undefined;
         if (imgw < imgh) {
             iw = thumb;
-            ih = iw * @as(f32, @floatFromInt(imgh)) / @as(f32, @floatFromInt(imgw));
+            ih = iw * f32FromInt(imgh) / f32FromInt(imgw);
             ix = 0;
             iy = -(ih - thumb) * 0.5;
         } else {
             ih = thumb;
-            iw = ih * @as(f32, @floatFromInt(imgw)) / @as(f32, @floatFromInt(imgh));
+            iw = ih * f32FromInt(imgw) / f32FromInt(imgh);
             ix = -(iw - thumb) * 0.5;
             iy = 0;
         }
 
-        const v = @as(f32, @floatFromInt(i)) * dv;
+        const v = f32FromInt(i) * dv;
         const a = math.clamp((uu - v) / dv, 0, 1);
 
         if (a < 1.0) {
@@ -1230,7 +1262,7 @@ fn drawLines(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
 
     for (caps, 0..) |cap, i| {
         for (joins, 0..) |join, j| {
-            const fx = x + s * 0.5 + (@as(f32, @floatFromInt(i)) * 3 + @as(f32, @floatFromInt(j))) / 9.0 * w + pad;
+            const fx = x + s * 0.5 + (f32FromInt(i) * 3 + f32FromInt(j)) / 9.0 * w + pad;
             const fy = y - s * 0.5 + pad;
 
             nvg.lineCap(cap);
@@ -1269,7 +1301,7 @@ fn drawWidths(nvg: NanoVg, x: f32, y0: f32, width: f32) void {
     var y = y0;
     var i: usize = 0;
     while (i < 20) : (i += 1) {
-        const w = (@as(f32, @floatFromInt(i)) + 0.5) * 0.1;
+        const w = (f32FromInt(i) + 0.5) * 0.1;
         nvg.strokeWidth(w);
         nvg.beginPath();
         nvg.moveTo(x, y);
@@ -1301,8 +1333,8 @@ fn drawCaps(nvg: NanoVg, x: f32, y: f32, width: f32) void {
         nvg.lineCap(cap);
         nvg.strokeColor(NanoVg.rgba(0, 0, 0, 255));
         nvg.beginPath();
-        nvg.moveTo(x, y + @as(f32, @floatFromInt(i)) * 10 + 5);
-        nvg.lineTo(x + width, y + @as(f32, @floatFromInt(i)) * 10 + 5);
+        nvg.moveTo(x, y + f32FromInt(i) * 10 + 5);
+        nvg.lineTo(x + width, y + f32FromInt(i) * 10 + 5);
         nvg.stroke();
     }
 }
@@ -1339,4 +1371,8 @@ fn drawScissor(nvg: NanoVg, x: f32, y: f32, t: f32) void {
     nvg.rect(-20, -10, 60, 30);
     nvg.fillColor(NanoVg.rgba(255, 128, 0, 255));
     nvg.fill();
+}
+
+inline fn f32FromInt(int: anytype) f32 {
+    return @floatFromInt(int);
 }
