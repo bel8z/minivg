@@ -243,9 +243,6 @@ fn wndProc(
             // NOTE (Matteo): Just marking the event has being handled, see
             // main loop for actual management.
         },
-        win32.WM_MOVE, win32.WM_MOVING => {
-            if (opt.steady) _ = win32.invalidateRect(win, null, true);
-        },
         else => return win32.DefWindowProcW(win, msg, wparam, lparam),
     }
 
