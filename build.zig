@@ -19,7 +19,10 @@ pub fn build(b: *std.Build) void {
 
     // NanoVG
     const nvg_path = "deps/nanovg";
-    const nvg = b.addModule("nanovg", .{ .root_source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } });
+    const nvg = b.addModule(
+        "nanovg",
+        .{ .root_source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } },
+    );
     nvg.addIncludePath(.{ .path = nvg_path ++ "/src" });
 
     const lib = b.addStaticLibrary(.{

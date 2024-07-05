@@ -20,7 +20,11 @@ pub inline fn getCurrentInstance() win32.HINSTANCE {
     );
 }
 
-pub inline fn loadProc(comptime T: type, comptime name: [*:0]const u8, handle: win32.HMODULE) Error!T {
+pub inline fn loadProc(
+    comptime T: type,
+    comptime name: [*:0]const u8,
+    handle: win32.HMODULE,
+) Error!T {
     return @as(T, @ptrCast(win32.kernel32.GetProcAddress(handle, name) orelse
         return error.Unexpected));
 }
@@ -454,7 +458,12 @@ pub const SW_SHOWDEFAULT = 10;
 pub const SW_FORCEMINIMIZE = 11;
 pub const SW_MAX = 11;
 
-pub const WNDPROC = *const fn (hwnd: win32.HWND, uMsg: c_uint, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(win32.WINAPI) win32.LRESULT;
+pub const WNDPROC = *const fn (
+    hwnd: win32.HWND,
+    uMsg: c_uint,
+    wParam: win32.WPARAM,
+    lParam: win32.LPARAM,
+) callconv(win32.WINAPI) win32.LRESULT;
 
 pub const MSG = extern struct {
     hWnd: ?win32.HWND,
@@ -492,7 +501,10 @@ pub fn unregisterClassW(name: win32.LPCWSTR, instance: win32.HINSTANCE) !void {
     const res = UnregisterClassW(name, instance);
     if (res == win32.FALSE) return error.Unexpected;
 }
-extern "user32" fn UnregisterClassW(name: win32.LPCWSTR, instance: win32.HINSTANCE) callconv(win32.WINAPI) win32.BOOL;
+extern "user32" fn UnregisterClassW(
+    name: win32.LPCWSTR,
+    instance: win32.HINSTANCE,
+) callconv(win32.WINAPI) win32.BOOL;
 
 pub fn createWindowExW(
     dwExStyle: u32,
@@ -508,7 +520,20 @@ pub fn createWindowExW(
     hInstance: win32.HINSTANCE,
     lpParam: ?win32.LPVOID,
 ) !win32.HWND {
-    const window = CreateWindowExW(dwExStyle, lpClassName, lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWindParent, hMenu, hInstance, lpParam);
+    const window = CreateWindowExW(
+        dwExStyle,
+        lpClassName,
+        lpWindowName,
+        dwStyle,
+        X,
+        Y,
+        nWidth,
+        nHeight,
+        hWindParent,
+        hMenu,
+        hInstance,
+        lpParam,
+    );
     if (window) |win| return win;
     return error.Unexpected;
 }
@@ -579,7 +604,12 @@ pub fn getMessageW(lpMsg: *MSG, hWnd: ?win32.HWND, wMsgFilterMin: u32, wMsgFilte
     if (res == win32.FALSE) return error.Quit;
     if (res < 0) return error.Unexpected;
 }
-extern "user32" fn GetMessageW(lpMsg: *MSG, hWnd: ?win32.HWND, wMsgFilterMin: c_uint, wMsgFilterMax: c_uint) callconv(win32.WINAPI) win32.BOOL;
+extern "user32" fn GetMessageW(
+    lpMsg: *MSG,
+    hWnd: ?win32.HWND,
+    wMsgFilterMin: c_uint,
+    wMsgFilterMax: c_uint,
+) callconv(win32.WINAPI) win32.BOOL;
 
 pub const PM_NOREMOVE = 0x0000;
 pub const PM_REMOVE = 0x0001;
@@ -596,7 +626,12 @@ pub extern "user32" fn PeekMessageW(
 pub extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(win32.WINAPI) win32.BOOL;
 pub extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(win32.WINAPI) win32.LRESULT;
 
-pub extern "user32" fn DefWindowProcW(hWnd: win32.HWND, Msg: c_uint, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(win32.WINAPI) win32.LRESULT;
+pub extern "user32" fn DefWindowProcW(
+    hWnd: win32.HWND,
+    Msg: c_uint,
+    wParam: win32.WPARAM,
+    lParam: win32.LPARAM,
+) callconv(win32.WINAPI) win32.LRESULT;
 
 // === Modal dialogue boxes ===
 

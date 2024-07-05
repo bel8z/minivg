@@ -119,7 +119,7 @@ pub fn update(
 
         nvg.fontSize(15.0);
         nvg.fontFace("sans");
-        nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
+        nvg.fillColor(white(128));
         nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
 
         var bounds: [4]f32 = undefined;
@@ -348,7 +348,7 @@ fn demo(
     y += 55;
 
     _ = button(nvg, .Trash, "Delete", rect(x, y, 160, 28), NanoVg.rgba(128, 16, 8, 255), m);
-    _ = button(nvg, .None, "Cancel", rect(x + 170, y, 110, 28), NanoVg.rgba(0, 0, 0, 0), m);
+    _ = button(nvg, .None, "Cancel", rect(x + 170, y, 110, 28), black(0), m);
 
     // Thumbnails box
     drawThumbnails(nvg, 365, popy - 30, 160, 300, images, t);
@@ -395,7 +395,7 @@ fn label(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
 
     nvg.fontSize(15.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
+    nvg.fillColor(white(128));
 
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
     _ = nvg.text(x, y + h * 0.5, text);
@@ -406,33 +406,50 @@ fn textBox(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void
 
     nvg.fontSize(17.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 64));
+    nvg.fillColor(white(64));
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
     _ = nvg.text(x + h * 0.3, y + h * 0.5, text);
 }
 
 // TODO (Matteo): Better naming
-fn textBoxNum(nvg: NanoVg, text: [:0]const u8, units: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
+fn textBoxNum(
+    nvg: NanoVg,
+    text: [:0]const u8,
+    units: [:0]const u8,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) void {
     drawEditBox(nvg, x, y, w, h);
 
     const uw = nvg.textBounds(0, 0, units, null);
 
     nvg.fontSize(15.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 64));
+    nvg.fillColor(white(64));
     nvg.textAlign(.{ .horizontal = .right, .vertical = .middle });
     _ = nvg.text(x + w - h * 0.3, y + h * 0.5, units);
 
     nvg.fontSize(17.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
+    nvg.fillColor(white(128));
     nvg.textAlign(.{ .horizontal = .right, .vertical = .middle });
     _ = nvg.text(x + w - uw - h * 0.5, y + h * 0.5, text);
 }
 
 fn drawEditBox(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32) void {
     // Edit
-    const bg = nvg.boxGradient(x + 1, y + 1 + 1.5, w - 2, h - 2, 3, 4, NanoVg.rgba(255, 255, 255, 32), NanoVg.rgba(32, 32, 32, 32));
+    const bg = nvg.boxGradient(
+        x + 1,
+        y + 1 + 1.5,
+        w - 2,
+        h - 2,
+        3,
+        4,
+        white(32),
+        NanoVg.rgba(32, 32, 32, 32),
+    );
     nvg.beginPath();
     nvg.roundedRect(x + 1, y + 1, w - 2, h - 2, 4 - 1);
     nvg.fillPaint(bg);
@@ -440,7 +457,7 @@ fn drawEditBox(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32) void {
 
     nvg.beginPath();
     nvg.roundedRect(x + 0.5, y + 0.5, w - 1, h - 1, 4 - 0.5);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 48));
+    nvg.strokeColor(black(48));
     nvg.stroke();
 }
 
@@ -449,19 +466,19 @@ fn checkBox(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) voi
 
     nvg.fontSize(15.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 160));
+    nvg.fillColor(white(160));
 
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
     _ = nvg.text(x + 28, y + h * 0.5, text);
 
-    const bg = nvg.boxGradient(x + 1, y + @round(h * 0.5) - 9 + 1, 18, 18, 3, 3, NanoVg.rgba(0, 0, 0, 32), NanoVg.rgba(0, 0, 0, 92));
+    const bg = nvg.boxGradient(x + 1, y + @round(h * 0.5) - 9 + 1, 18, 18, 3, 3, black(32), black(92));
     nvg.beginPath();
     nvg.roundedRect(x + 1, y + @round(h * 0.5) - 9, 18, 18, 3);
     nvg.fillPaint(bg);
     nvg.fill();
 
     nvg.fontSize(33);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 128));
+    nvg.fillColor(white(128));
     nvg.textAlign(.{ .horizontal = .center, .vertical = .middle });
     _ = icon(nvg, x + 9 + 2, y + h * 0.5, .Check);
 }
@@ -508,8 +525,8 @@ fn drawButton(
         bounds.origin.y,
         bounds.origin.x,
         bounds.origin.y + h,
-        NanoVg.rgba(255, 255, 255, alpha),
-        NanoVg.rgba(0, 0, 0, alpha),
+        white(alpha),
+        black(alpha),
     );
     r = bounds.offset(-2);
     nvg.beginPath();
@@ -541,7 +558,7 @@ fn drawButton(
     r = bounds.offset(-1);
     nvg.beginPath();
     nvg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 0.5);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 48));
+    nvg.strokeColor(black(48));
     nvg.stroke();
 
     nvg.fontSize(17.0);
@@ -553,7 +570,7 @@ fn drawButton(
         iw = iconBounds(nvg, 0, 0, preicon, null);
         iw += h * 0.15;
 
-        nvg.fillColor(NanoVg.rgba(255, 255, 255, 96));
+        nvg.fillColor(white(96));
         nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
         _ = icon(nvg, cen.x - tw * 0.5 - iw * 0.75, cen.y, preicon);
     }
@@ -561,9 +578,9 @@ fn drawButton(
     nvg.fontSize(17.0);
     nvg.fontFace("sans-bold");
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
-    nvg.fillColor(NanoVg.rgba(0, 0, 0, 160));
+    nvg.fillColor(black(160));
     _ = nvg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y - 1, text);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 160));
+    nvg.fillColor(white(160));
     _ = nvg.text(cen.x - tw * 0.5 + iw * 0.25, cen.y, text);
 }
 
@@ -585,8 +602,8 @@ fn slider(nvg: NanoVg, pos: f32, bounds: Rect) void {
         4,
         2,
         2,
-        NanoVg.rgba(0, 0, 0, 32),
-        NanoVg.rgba(0, 0, 0, 128),
+        black(32),
+        black(128),
     );
     nvg.beginPath();
     nvg.roundedRect(bounds.origin.x, cy - 2, w, 4, 2);
@@ -594,14 +611,7 @@ fn slider(nvg: NanoVg, pos: f32, bounds: Rect) void {
     nvg.fill();
 
     // Knob Shadow
-    bg = nvg.radialGradient(
-        cx,
-        cy + 1,
-        kr - 3,
-        kr + 3,
-        NanoVg.rgba(0, 0, 0, 64),
-        NanoVg.rgba(0, 0, 0, 0),
-    );
+    bg = nvg.radialGradient(cx, cy + 1, kr - 3, kr + 3, black(64), black(0));
     nvg.beginPath();
     nvg.rect(cx - kr - 5, cy - kr - 5, kr * 2 + 5 + 5, kr * 2 + 5 + 5 + 3);
     nvg.circle(cx, cy, kr);
@@ -615,8 +625,8 @@ fn slider(nvg: NanoVg, pos: f32, bounds: Rect) void {
         cy - kr,
         bounds.origin.x,
         cy + kr,
-        NanoVg.rgba(255, 255, 255, 16),
-        NanoVg.rgba(0, 0, 0, 16),
+        white(16),
+        black(16),
     );
     nvg.beginPath();
     nvg.circle(cx, cy, kr - 1);
@@ -627,7 +637,7 @@ fn slider(nvg: NanoVg, pos: f32, bounds: Rect) void {
 
     nvg.beginPath();
     nvg.circle(cx, cy, kr - 0.5);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 92));
+    nvg.strokeColor(black(92));
     nvg.stroke();
 }
 
@@ -656,7 +666,14 @@ fn colorPicker(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
         const ay = cy + @sin(a0) * (r0 + r1) * 0.5;
         const bx = cx + @cos(a1) * (r0 + r1) * 0.5;
         const by = cy + @sin(a1) * (r0 + r1) * 0.5;
-        paint = nvg.linearGradient(ax, ay, bx, by, NanoVg.hsla(a0 / (math.pi * 2.0), 1.0, 0.55, 255), NanoVg.hsla(a1 / (math.pi * 2.0), 1.0, 0.55, 255));
+        paint = nvg.linearGradient(
+            ax,
+            ay,
+            bx,
+            by,
+            NanoVg.hsla(a0 / (math.pi * 2.0), 1.0, 0.55, 255),
+            NanoVg.hsla(a1 / (math.pi * 2.0), 1.0, 0.55, 255),
+        );
         nvg.fillPaint(paint);
         nvg.fill();
     }
@@ -664,7 +681,7 @@ fn colorPicker(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     nvg.beginPath();
     nvg.circle(cx, cy, r0 - 0.5);
     nvg.circle(cx, cy, r1 + 0.5);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 64));
+    nvg.strokeColor(black(64));
     nvg.strokeWidth(1.0);
     nvg.stroke();
 
@@ -677,10 +694,10 @@ fn colorPicker(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     nvg.strokeWidth(2.0);
     nvg.beginPath();
     nvg.rect(r0 - 1, -3, r1 - r0 + 2, 6);
-    nvg.strokeColor(NanoVg.rgba(255, 255, 255, 192));
+    nvg.strokeColor(white(192));
     nvg.stroke();
 
-    paint = nvg.boxGradient(r0 - 3, -5, r1 - r0 + 6, 10, 2, 4, NanoVg.rgba(0, 0, 0, 128), NanoVg.rgba(0, 0, 0, 0));
+    paint = nvg.boxGradient(r0 - 3, -5, r1 - r0 + 6, 10, 2, 4, black(128), black(0));
     nvg.beginPath();
     nvg.rect(r0 - 2 - 10, -4 - 10, r1 - r0 + 4 + 20, 8 + 20);
     nvg.rect(r0 - 2, -4, r1 - r0 + 4, 8);
@@ -699,13 +716,27 @@ fn colorPicker(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     nvg.lineTo(ax, ay);
     nvg.lineTo(bx, by);
     nvg.closePath();
-    paint = nvg.linearGradient(r, 0, ax, ay, NanoVg.hsla(hue, 1.0, 0.5, 255), NanoVg.rgba(255, 255, 255, 255));
+    paint = nvg.linearGradient(
+        r,
+        0,
+        ax,
+        ay,
+        NanoVg.hsla(hue, 1.0, 0.5, 255),
+        white(255),
+    );
     nvg.fillPaint(paint);
     nvg.fill();
-    paint = nvg.linearGradient((r + ax) * 0.5, (0 + ay) * 0.5, bx, by, NanoVg.rgba(0, 0, 0, 0), NanoVg.rgba(0, 0, 0, 255));
+    paint = nvg.linearGradient(
+        (r + ax) * 0.5,
+        (0 + ay) * 0.5,
+        bx,
+        by,
+        black(0),
+        black(255),
+    );
     nvg.fillPaint(paint);
     nvg.fill();
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 64));
+    nvg.strokeColor(black(64));
     nvg.stroke();
 
     // Select circle on triangle
@@ -714,10 +745,10 @@ fn colorPicker(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     nvg.strokeWidth(2.0);
     nvg.beginPath();
     nvg.circle(ax, ay, 5);
-    nvg.strokeColor(NanoVg.rgba(255, 255, 255, 192));
+    nvg.strokeColor(white(192));
     nvg.stroke();
 
-    paint = nvg.radialGradient(ax, ay, 7, 9, NanoVg.rgba(0, 0, 0, 64), NanoVg.rgba(0, 0, 0, 0));
+    paint = nvg.radialGradient(ax, ay, 7, 9, black(64), black(0));
     nvg.beginPath();
     nvg.rect(ax - 20, ay - 20, 40, 40);
     nvg.circle(ax, ay, 7);
@@ -742,7 +773,16 @@ fn drawWindow(nvg: NanoVg, title: [:0]const u8, x: f32, y: f32, w: f32, h: f32) 
     nvg.fill();
 
     // Drop shadow
-    shadowPaint = nvg.boxGradient(x, y + 2, w, h, cornerRadius * 2, 10, NanoVg.rgba(0, 0, 0, 128), NanoVg.rgba(0, 0, 0, 0));
+    shadowPaint = nvg.boxGradient(
+        x,
+        y + 2,
+        w,
+        h,
+        cornerRadius * 2,
+        10,
+        black(128),
+        black(0),
+    );
     nvg.beginPath();
     nvg.rect(x - 10, y - 10, w + 20, h + 30);
     nvg.roundedRect(x, y, w, h, cornerRadius);
@@ -751,7 +791,7 @@ fn drawWindow(nvg: NanoVg, title: [:0]const u8, x: f32, y: f32, w: f32, h: f32) 
     nvg.fill();
 
     // Header
-    headerPaint = nvg.linearGradient(x, y, x, y + 15, NanoVg.rgba(255, 255, 255, 8), NanoVg.rgba(0, 0, 0, 16));
+    headerPaint = nvg.linearGradient(x, y, x, y + 15, white(8), black(16));
     nvg.beginPath();
     nvg.roundedRect(x + 1, y + 1, w - 2, 30, cornerRadius - 1);
     nvg.fillPaint(headerPaint);
@@ -759,7 +799,7 @@ fn drawWindow(nvg: NanoVg, title: [:0]const u8, x: f32, y: f32, w: f32, h: f32) 
     nvg.beginPath();
     nvg.moveTo(x + 0.5, y + 0.5 + 30);
     nvg.lineTo(x + 0.5 + w - 1, y + 0.5 + 30);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 32));
+    nvg.strokeColor(black(32));
     nvg.stroke();
 
     nvg.fontSize(15.0);
@@ -767,7 +807,7 @@ fn drawWindow(nvg: NanoVg, title: [:0]const u8, x: f32, y: f32, w: f32, h: f32) 
     nvg.textAlign(.{ .horizontal = .center, .vertical = .middle });
 
     nvg.fontBlur(2);
-    nvg.fillColor(NanoVg.rgba(0, 0, 0, 128));
+    nvg.fillColor(black(128));
     _ = nvg.text(x + w / 2, y + 16 + 1, title);
 
     nvg.fontBlur(0);
@@ -780,7 +820,7 @@ fn drawWindow(nvg: NanoVg, title: [:0]const u8, x: f32, y: f32, w: f32, h: f32) 
 fn drawDropDown(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32) void {
     const cornerRadius = 4.0;
 
-    const bg = nvg.linearGradient(x, y, x, y + h, NanoVg.rgba(255, 255, 255, 16), NanoVg.rgba(0, 0, 0, 16));
+    const bg = nvg.linearGradient(x, y, x, y + h, white(16), black(16));
     nvg.beginPath();
     nvg.roundedRect(x + 1, y + 1, w - 2, h - 2, cornerRadius - 1.0);
     nvg.fillPaint(bg);
@@ -788,17 +828,17 @@ fn drawDropDown(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32)
 
     nvg.beginPath();
     nvg.roundedRect(x + 0.5, y + 0.5, w - 1, h - 1, cornerRadius - 0.5);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 48));
+    nvg.strokeColor(black(48));
     nvg.stroke();
 
     nvg.fontSize(17.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 160));
+    nvg.fillColor(white(160));
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
     _ = nvg.text(x + h * 0.3, y + h * 0.5, text);
 
     nvg.fontSize(h * 1.3);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 64));
+    nvg.fillColor(white(64));
     nvg.textAlign(.{ .horizontal = .center, .vertical = .middle });
     _ = icon(nvg, x + w - h * 0.5, y + h * 0.5, .ChevronRight);
 }
@@ -807,7 +847,16 @@ fn drawSearchBox(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32
     const cornerRadius = h / 2 - 1;
 
     // Edit
-    const bg = nvg.boxGradient(x, y + 1.5, w, h, h / 2, 5, NanoVg.rgba(0, 0, 0, 16), NanoVg.rgba(0, 0, 0, 92));
+    const bg = nvg.boxGradient(
+        x,
+        y + 1.5,
+        w,
+        h,
+        h / 2,
+        5,
+        black(16),
+        black(92),
+    );
     nvg.beginPath();
     nvg.roundedRect(x, y, w, h, cornerRadius);
     nvg.fillPaint(bg);
@@ -815,19 +864,19 @@ fn drawSearchBox(nvg: NanoVg, text: [:0]const u8, x: f32, y: f32, w: f32, h: f32
 
     nvg.fontSize(h * 1.3);
     nvg.fontFace("icons");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 64));
+    nvg.fillColor(white(64));
     nvg.textAlign(.{ .horizontal = .center, .vertical = .middle });
     _ = icon(nvg, x + h * 0.55, y + h * 0.55, .Search);
 
     nvg.fontSize(17.0);
     nvg.fontFace("sans");
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 32));
+    nvg.fillColor(white(32));
 
     nvg.textAlign(.{ .horizontal = .left, .vertical = .middle });
     _ = nvg.text(x + h * 1.05, y + h * 0.5, text);
 
     nvg.fontSize(h * 1.3);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 32));
+    nvg.fillColor(white(32));
     nvg.textAlign(.{ .horizontal = .center, .vertical = .middle });
     _ = icon(nvg, x + w - h * 0.55, y + h * 0.55, .CircledCross);
 }
@@ -847,8 +896,8 @@ fn drawEyes(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, mx: f32, my: f32, t: f3
         y + h * 0.5,
         x + w * 0.1,
         y + h,
-        NanoVg.rgba(0, 0, 0, 32),
-        NanoVg.rgba(0, 0, 0, 16),
+        black(32),
+        black(16),
     );
     nvg.beginPath();
     nvg.ellipse(lx + 3.0, ly + 16.0, ex, ey);
@@ -898,13 +947,27 @@ fn drawEyes(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, mx: f32, my: f32, t: f3
     nvg.fillColor(NanoVg.rgba(32, 32, 32, 255));
     nvg.fill();
 
-    var gloss = nvg.radialGradient(lx - ex * 0.25, ly - ey * 0.5, ex * 0.1, ex * 0.75, NanoVg.rgba(255, 255, 255, 128), NanoVg.rgba(255, 255, 255, 0));
+    var gloss = nvg.radialGradient(
+        lx - ex * 0.25,
+        ly - ey * 0.5,
+        ex * 0.1,
+        ex * 0.75,
+        white(128),
+        white(0),
+    );
     nvg.beginPath();
     nvg.ellipse(lx, ly, ex, ey);
     nvg.fillPaint(gloss);
     nvg.fill();
 
-    gloss = nvg.radialGradient(rx - ex * 0.25, ry - ey * 0.5, ex * 0.1, ex * 0.75, NanoVg.rgba(255, 255, 255, 128), NanoVg.rgba(255, 255, 255, 0));
+    gloss = nvg.radialGradient(
+        rx - ex * 0.25,
+        ry - ey * 0.5,
+        ex * 0.1,
+        ex * 0.75,
+        white(128),
+        white(0),
+    );
     nvg.beginPath();
     nvg.ellipse(rx, ry, ex, ey);
     nvg.fillPaint(gloss);
@@ -946,11 +1009,11 @@ fn drawParagraph(nvg: NanoVg, x: f32, y_arg: f32, width: f32, height: f32, mx: f
             const hit = mx > x and mx < (x + width) and my >= y and my < (y + lineh);
 
             nvg.beginPath();
-            nvg.fillColor(NanoVg.rgba(255, 255, 255, if (hit) 64 else 16));
+            nvg.fillColor(white(if (hit) 64 else 16));
             nvg.rect(x + row.minx, y, row.maxx - row.minx, lineh);
             nvg.fill();
 
-            nvg.fillColor(NanoVg.rgba(255, 255, 255, 255));
+            nvg.fillColor(white(255));
             _ = nvg.text(x, y, row.text);
 
             if (hit) {
@@ -991,7 +1054,13 @@ fn drawParagraph(nvg: NanoVg, x: f32, y_arg: f32, width: f32, height: f32, mx: f
 
         nvg.beginPath();
         nvg.fillColor(NanoVg.rgba(255, 192, 0, 255));
-        nvg.roundedRect(@round(bounds[0] - 4), @round(bounds[1] - 2), @round(bounds[2] - bounds[0]) + 8, @round(bounds[3] - bounds[1]) + 4, (@round(bounds[3] - bounds[1]) + 4) / 2 - 1);
+        nvg.roundedRect(
+            @round(bounds[0] - 4),
+            @round(bounds[1] - 2),
+            @round(bounds[2] - bounds[0]) + 8,
+            @round(bounds[3] - bounds[1]) + 4,
+            (@round(bounds[3] - bounds[1]) + 4) / 2 - 1,
+        );
         nvg.fill();
 
         nvg.fillColor(NanoVg.rgba(32, 32, 32, 255));
@@ -1014,14 +1083,20 @@ fn drawParagraph(nvg: NanoVg, x: f32, y_arg: f32, width: f32, height: f32, mx: f
 
     nvg.beginPath();
     nvg.fillColor(NanoVg.rgba(220, 220, 220, 255));
-    nvg.roundedRect(bounds[0] - 2, bounds[1] - 2, @round(bounds[2] - bounds[0]) + 4, @round(bounds[3] - bounds[1]) + 4, 3);
+    nvg.roundedRect(
+        bounds[0] - 2,
+        bounds[1] - 2,
+        @round(bounds[2] - bounds[0]) + 4,
+        @round(bounds[3] - bounds[1]) + 4,
+        3,
+    );
     px = @round((bounds[2] + bounds[0]) / 2);
     nvg.moveTo(px, bounds[1] - 10);
     nvg.lineTo(px + 7, bounds[1] + 1);
     nvg.lineTo(px - 7, bounds[1] + 1);
     nvg.fill();
 
-    nvg.fillColor(NanoVg.rgba(0, 0, 0, 220));
+    nvg.fillColor(black(220));
     nvg.textBox(x, y, 150, hoverText);
 
     nvg.restore();
@@ -1064,7 +1139,7 @@ fn drawGraph(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     i = 1;
     while (i < 6) : (i += 1)
         nvg.bezierTo(sx[i - 1] + dx * 0.5, sy[i - 1] + 2, sx[i] - dx * 0.5, sy[i] + 2, sx[i], sy[i] + 2);
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 32));
+    nvg.strokeColor(black(32));
     nvg.strokeWidth(3.0);
     nvg.stroke();
 
@@ -1081,7 +1156,7 @@ fn drawGraph(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
     // Graph sample pos
     i = 0;
     while (i < 6) : (i += 1) {
-        bg = nvg.radialGradient(sx[i], sy[i] + 2, 3.0, 8.0, NanoVg.rgba(0, 0, 0, 32), NanoVg.rgba(0, 0, 0, 0));
+        bg = nvg.radialGradient(sx[i], sy[i] + 2, 3.0, 8.0, black(32), black(0));
         nvg.beginPath();
         nvg.rect(sx[i] - 10, sy[i] - 10 + 2, 20, 20);
         nvg.fillPaint(bg);
@@ -1120,14 +1195,29 @@ fn drawSpinner(nvg: NanoVg, cx: f32, cy: f32, r: f32, t: f32) void {
     const ay = cy + @sin(a0) * (r0 + r1) * 0.5;
     const bx = cx + @cos(a1) * (r0 + r1) * 0.5;
     const by = cy + @sin(a1) * (r0 + r1) * 0.5;
-    const paint = nvg.linearGradient(ax, ay, bx, by, NanoVg.rgba(0, 0, 0, 0), NanoVg.rgba(0, 0, 0, 128));
+    const paint = nvg.linearGradient(
+        ax,
+        ay,
+        bx,
+        by,
+        black(0),
+        black(128),
+    );
     nvg.fillPaint(paint);
     nvg.fill();
 
     nvg.restore();
 }
 
-fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const NanoVg.Image, t: f32) void {
+fn drawThumbnails(
+    nvg: NanoVg,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    images: []const NanoVg.Image,
+    t: f32,
+) void {
     const cornerRadius = 3.0;
     const thumb = 60.0;
     const arry = 30.5;
@@ -1138,7 +1228,16 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
     nvg.save();
 
     // Drop shadow
-    var shadowPaint = nvg.boxGradient(x, y + 4, w, h, cornerRadius * 2.0, 20, NanoVg.rgba(0, 0, 0, 128), NanoVg.rgba(0, 0, 0, 0));
+    var shadowPaint = nvg.boxGradient(
+        x,
+        y + 4,
+        w,
+        h,
+        cornerRadius * 2.0,
+        20,
+        black(128),
+        black(0),
+    );
     nvg.beginPath();
     nvg.rect(x - 10, y - 10, w + 20, h + 30);
     nvg.roundedRect(x, y, w, h, cornerRadius);
@@ -1198,7 +1297,16 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
         nvg.fillPaint(imgPaint);
         nvg.fill();
 
-        shadowPaint = nvg.boxGradient(tx - 1, ty, thumb + 2.0, thumb + 2.0, 5, 3, NanoVg.rgba(0, 0, 0, 128), NanoVg.rgba(0, 0, 0, 0));
+        shadowPaint = nvg.boxGradient(
+            tx - 1,
+            ty,
+            thumb + 2.0,
+            thumb + 2.0,
+            5,
+            3,
+            black(128),
+            black(0),
+        );
         nvg.beginPath();
         nvg.rect(tx - 5, ty - 5, thumb + 10.0, thumb + 10.0);
         nvg.roundedRect(tx, ty, thumb, thumb, 6);
@@ -1209,33 +1317,65 @@ fn drawThumbnails(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, images: []const N
         nvg.beginPath();
         nvg.roundedRect(tx + 0.5, ty + 0.5, thumb - 1.0, thumb - 1.0, 4 - 0.5);
         nvg.strokeWidth(1.0);
-        nvg.strokeColor(NanoVg.rgba(255, 255, 255, 192));
+        nvg.strokeColor(white(192));
         nvg.stroke();
     }
     nvg.restore();
 
     // Hide fades
-    var fadePaint = nvg.linearGradient(x, y, x, y + 6, NanoVg.rgba(200, 200, 200, 255), NanoVg.rgba(200, 200, 200, 0));
+    var fadePaint = nvg.linearGradient(
+        x,
+        y,
+        x,
+        y + 6,
+        NanoVg.rgba(200, 200, 200, 255),
+        NanoVg.rgba(200, 200, 200, 0),
+    );
     nvg.beginPath();
     nvg.rect(x + 4, y, w - 8, 6);
     nvg.fillPaint(fadePaint);
     nvg.fill();
 
-    fadePaint = nvg.linearGradient(x, y + h, x, y + h - 6, NanoVg.rgba(200, 200, 200, 255), NanoVg.rgba(200, 200, 200, 0));
+    fadePaint = nvg.linearGradient(
+        x,
+        y + h,
+        x,
+        y + h - 6,
+        NanoVg.rgba(200, 200, 200, 255),
+        NanoVg.rgba(200, 200, 200, 0),
+    );
     nvg.beginPath();
     nvg.rect(x + 4, y + h - 6, w - 8, 6);
     nvg.fillPaint(fadePaint);
     nvg.fill();
 
     // Scroll bar
-    shadowPaint = nvg.boxGradient(x + w - 12 + 1, y + 4 + 1, 8, h - 8, 3, 4, NanoVg.rgba(0, 0, 0, 32), NanoVg.rgba(0, 0, 0, 92));
+    shadowPaint = nvg.boxGradient(
+        x + w - 12 + 1,
+        y + 4 + 1,
+        8,
+        h - 8,
+        3,
+        4,
+        black(32),
+        black(92),
+    );
     nvg.beginPath();
     nvg.roundedRect(x + w - 12, y + 4, 8, h - 8, 3);
     nvg.fillPaint(shadowPaint);
     nvg.fill();
 
     const scrollh = (h / stackh) * (h - 8);
-    shadowPaint = nvg.boxGradient(x + w - 12 - 1, y + 4 + (h - 8 - scrollh) * u - 1, 8, scrollh, 3, 4, NanoVg.rgba(220, 220, 220, 255), NanoVg.rgba(128, 128, 128, 255));
+    shadowPaint = nvg.boxGradient(
+        x + w - 12 - 1,
+        y + 4 + (h - 8 - scrollh) * u - 1,
+        8,
+        scrollh,
+        3,
+        4,
+        NanoVg.rgba(220, 220, 220, 255),
+        NanoVg.rgba(128, 128, 128, 255),
+    );
     nvg.beginPath();
     nvg.roundedRect(x + w - 12 + 1, y + 4 + 1 + (h - 8 - scrollh) * u, 8 - 2, scrollh - 2, 2);
     nvg.fillPaint(shadowPaint);
@@ -1269,7 +1409,7 @@ fn drawLines(nvg: NanoVg, x: f32, y: f32, w: f32, h: f32, t: f32) void {
             nvg.lineJoin(join);
 
             nvg.strokeWidth(s * 0.3);
-            nvg.strokeColor(NanoVg.rgba(0, 0, 0, 160));
+            nvg.strokeColor(black(160));
             nvg.beginPath();
             nvg.moveTo(fx + pts[0], fy + pts[1]);
             nvg.lineTo(fx + pts[2], fy + pts[3]);
@@ -1296,7 +1436,7 @@ fn drawWidths(nvg: NanoVg, x: f32, y0: f32, width: f32) void {
     nvg.save();
     defer nvg.restore();
 
-    nvg.strokeColor(NanoVg.rgba(0, 0, 0, 255));
+    nvg.strokeColor(black(255));
 
     var y = y0;
     var i: usize = 0;
@@ -1320,18 +1460,18 @@ fn drawCaps(nvg: NanoVg, x: f32, y: f32, width: f32) void {
 
     nvg.beginPath();
     nvg.rect(x - lineWidth / 2.0, y, width + lineWidth, 40);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 32));
+    nvg.fillColor(white(32));
     nvg.fill();
 
     nvg.beginPath();
     nvg.rect(x, y, width, 40);
-    nvg.fillColor(NanoVg.rgba(255, 255, 255, 32));
+    nvg.fillColor(white(32));
     nvg.fill();
 
     nvg.strokeWidth(lineWidth);
     for (caps, 0..) |cap, i| {
         nvg.lineCap(cap);
-        nvg.strokeColor(NanoVg.rgba(0, 0, 0, 255));
+        nvg.strokeColor(black(255));
         nvg.beginPath();
         nvg.moveTo(x, y + f32FromInt(i) * 10 + 5);
         nvg.lineTo(x + width, y + f32FromInt(i) * 10 + 5);
@@ -1375,4 +1515,12 @@ fn drawScissor(nvg: NanoVg, x: f32, y: f32, t: f32) void {
 
 inline fn f32FromInt(int: anytype) f32 {
     return @floatFromInt(int);
+}
+
+inline fn white(a: u8) NanoVg.Color {
+    NanoVg.rgba(255, 255, 255, a);
+}
+
+inline fn black(a: u8) NanoVg.Color {
+    NanoVg.rgba(0, 0, 0, a);
 }
