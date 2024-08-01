@@ -160,6 +160,7 @@ pub fn main() anyerror!void {
     while (loop_state != .Quit) {
         if (loader.update(&api)) {
             // TODO (Matteo): Handle reload?
+            std.log.debug("Reloaded", .{});
         }
 
         if (vsync != opt.steady) {

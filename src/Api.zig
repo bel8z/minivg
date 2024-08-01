@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
+const fs = std.fs;
 
 pub const Api = @This();
 
@@ -58,23 +59,36 @@ update: *const fn (
 ) f32,
 
 pub const Loader = struct {
-    dir: std.fs.Dir,
+    dir_path: []const u8,
+    dir: fs.Dir,
     lib: ?win32.HMODULE = null,
     timestamp: i64 = -1,
 
+    // NOTE (Matteo): Static allocation avoids stack overflow
+    var buf: [4 * win32.PATH_MAX_WIDE]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
     pub fn init(api_: *Api) !Loader {
+        const exe_dir = try fs.selfExeDirPathAlloc(alloc);
+        const root = fs.path.dirname(exe_dir) orelse exe_dir;
+        const lib_path = try fs.path.join(alloc, &.{ root, "lib", "app.dll" });
+        const lib_dir = fs.path.dirname(lib_path) orelse unreachable;
+
         var self = Loader{
-            .dir = try std.fs.cwd().openDir(
-                "../lib",
-                .{ .access_sub_paths = false, .no_follow = true, .iterate = true },
-            ),
+            .dir_path = lib_dir,
+            .dir = try std.fs.openDirAbsolute(lib_dir, .{
+                .access_sub_paths = false,
+                .no_follow = true,
+                .iterate = true,
+            }),
         };
 
         if (builtin.mode == .Debug) {
             const updated = try self.updateInternal(api_);
             assert(updated);
         } else {
-            const lib = try win32.LoadLibraryW(L("../lib/app.dll"));
+            const lib = try loadLib(lib_path);
             const init_fn = try win32.loadProc(Api.InitFn, "initApi", lib);
             init_fn(api_);
             self.lib = lib;
@@ -100,16 +114,16 @@ pub const Loader = struct {
 
             const start = std.ascii.indexOfIgnoreCase(entry.name, "app-") orelse continue;
             const end = std.ascii.indexOfIgnoreCase(entry.name, ".dll") orelse continue;
-            const buf = entry.name[start + 4 .. end];
+            const str = entry.name[start + 4 .. end];
 
-            const timestamp = try std.fmt.parseInt(i64, buf, 10);
+            const timestamp = try std.fmt.parseInt(i64, str, 10);
             if (timestamp > result) result = timestamp;
         }
 
         if (result < 0) return error.NotFound;
         if (result == self.timestamp) return false;
 
-        const new_lib = try loadLib(result);
+        const new_lib = try self.loadLibTimestamp(result);
         const init_fn = try win32.loadProc(Api.InitFn, "initApi", new_lib);
         init_fn(api_);
 
@@ -124,15 +138,21 @@ pub const Loader = struct {
         return true;
     }
 
-    fn loadLib(timestamp: i64) !win32.HMODULE {
-        var utf8: [256]u8 = undefined;
-        var utf16: [256]u16 = undefined;
+    fn loadLibTimestamp(self: *Loader, timestamp: i64) !win32.HMODULE {
+        const name = try std.fmt.allocPrint(alloc, "app-{}.dll", .{timestamp});
+        defer alloc.free(name);
 
-        const name = try std.fmt.bufPrint(&utf8, "../lib/app-{}.dll", .{timestamp});
-        const len = try std.unicode.utf8ToUtf16Le(&utf16, name);
-        utf16[len] = 0;
+        const path = try fs.path.join(alloc, &.{ self.dir_path, name });
+        defer alloc.free(path);
 
-        return win32.LoadLibraryW(utf16[0..len :0]);
+        return loadLib(path);
+    }
+
+    fn loadLib(path: []const u8) !win32.HMODULE {
+        const path16 = try std.unicode.utf8ToUtf16LeAllocZ(alloc, path);
+        defer alloc.free(path16);
+
+        return win32.LoadLibraryW(path16);
     }
 
     fn delete(self: *Loader, timestamp: i64) !void {
