@@ -518,8 +518,8 @@ fn drawButton(
 
     const h = bounds.size.y;
     const cen = bounds.center();
-    const black = (col.r == 0 and col.g == 0 and col.b == 0 and col.a == 0);
-    const alpha: u8 = if (black) 16 else 32;
+    const is_black = (col.r == 0 and col.g == 0 and col.b == 0 and col.a == 0);
+    const alpha: u8 = if (is_black) 16 else 32;
     const bg = nvg.linearGradient(
         bounds.origin.x,
         bounds.origin.y,
@@ -532,7 +532,7 @@ fn drawButton(
     nvg.beginPath();
     nvg.roundedRect(r.origin.x, r.origin.y, r.size.x, r.size.y, cornerRadius - 1.0);
 
-    if (!black) {
+    if (!is_black) {
         switch (state) {
             .Pressed => {
                 var dark = col;
@@ -1518,9 +1518,9 @@ inline fn f32FromInt(int: anytype) f32 {
 }
 
 inline fn white(a: u8) NanoVg.Color {
-    NanoVg.rgba(255, 255, 255, a);
+    return NanoVg.rgba(255, 255, 255, a);
 }
 
 inline fn black(a: u8) NanoVg.Color {
-    NanoVg.rgba(0, 0, 0, a);
+    return NanoVg.rgba(0, 0, 0, a);
 }
