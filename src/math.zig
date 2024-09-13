@@ -115,18 +115,24 @@ pub fn VecImpl(comptime Vec: type, comptime T: type) type {
                     }
                 },
                 // For sequence types, store the given number of components
-                .Array => |a| len = a.len,
-                .Struct => |s| {
-                    len = if (s.is_tuple) s.fields.len else @compileError(type_err);
-                    if (s.is_tuple) {
-                        len = s.fields.len;
+                .Array => |t| len = t.len,
+                .Struct => |t| {
+                    len = if (t.is_tuple) t.fields.len else @compileError(type_err);
+                    if (t.is_tuple) {
+                        len = t.fields.len;
                     } else {
                         // If a struct is given, try to use the same fields
-                        comptime assert(s.fields.len >= fields.len);
+                        comptime assert(t.fields.len >= fields.len);
                         inline for (fields) |field| {
                             const name = field.name;
                             @field(r, name) = @field(v, name);
                         }
+                    }
+                },
+                .Vector => |t| {
+                    len = t.len;
+                    if (len != fields.len or t.child != T) {
+                        @compileError(type_err);
                     }
                 },
                 else => @compileError(type_err),
