@@ -1,6 +1,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const math = @import("../math.zig");
+const Vec2 = math.Vec2(f32);
+const Rect = math.AlignedBox2(f32);
+
 const c = @cImport({
     @cDefine("LAY_FLOAT", "1");
     @cInclude("layout.h");
@@ -13,12 +17,6 @@ comptime {
     assert(@sizeOf(c.lay_vec2) == @sizeOf([2]f32));
     assert(@sizeOf(c.lay_vec4) == @sizeOf([4]f32));
 }
-
-// TODO (Matteo): Expose these types?
-const Vec2 = c.lay_vec2;
-const Vec4 = c.lay_vec4;
-
-pub const Item = struct { id: u32 };
 
 pub const Layout = @This();
 
@@ -46,39 +44,56 @@ pub fn run(self: *Layout) void {
     c.lay_run_context(&self.ctx);
 }
 
-pub fn runItem(self: *Layout, item: Item) void {
-    c.lay_run_item(&self.ctx, item.id);
-}
+// TODO (Matteo): Is making this a fat pointer a bad idea?
+pub const Item = struct {
+    id: u32,
+    ctx: *c.lay_context,
 
-pub fn createItem(self: *Layout) Item {
-    return Item{ .id = c.lay_item(&self.ctx) };
-}
+    pub fn create(layout: *Layout) Item {
+        const ctx = &layout.ctx;
+        return Item{
+            .id = c.lay_item(ctx),
+            .ctx = ctx,
+        };
+    }
 
-// NOTE (Matteo): I found the nomenclature of the tree manipulation operations confusing:
-// - lay_insert: inserts an item into another item, forming a parent - child relationship
-// - lay_push  : like lay_insert, but puts the new item as the first child in a parent instead of as the last
-// - lay_append: inserts an item as a sibling after another item.
-// So basically lay_insert is a push back/append/LIFO operation, lay_push is a
-// push front/prepend/FIFO operation and lay_append is an actual insertion...
+    pub fn run(self: Item) void {
+        c.lay_run_item(self.ctx, self.id);
+    }
 
-pub fn addFirst(self: *Layout, parent: Item, item: Item) void {
-    c.lay_push(&self.ctx, parent, item);
-}
+    // TODO (Matteo): Size operations
+    // lay_get_size
+    // lay_get_size_xy
+    // lay_set_size
+    // lay_set_size_xy
 
-pub fn addLast(self: *Layout, parent: Item, item: Item) void {
-    c.lay_insert(&self.ctx, parent.id, item.id);
-}
+    pub fn getSize(self: Item) Vec2 {
+        return c.lay_get_size(self.ctx, self.id);
+    }
 
-pub fn addNext(self: *Layout, prev: Item, item: Item) void {
-    c.lay_append(&self.ctx, prev.id, item.id);
-}
+    pub fn getRect(self: Item) Rect {
+        const rect = c.lay_get_rect(self.ctx, self.id);
+        return math.rect(rect[0], rect[1], rect[2], rect[3]);
+    }
 
-// TODO (Matteo): Size operations
-// lay_get_size
-// lay_get_size_xy
-// lay_set_size
-// lay_set_size_xy
+    // NOTE (Matteo): I found the nomenclature of the tree manipulation operations confusing:
+    // - lay_insert: inserts an item into another item, forming a parent - child relationship
+    // - lay_push  : like lay_insert, but puts the new item as the first child in a parent instead of as the last
+    // - lay_append: inserts an item as a sibling after another item.
+    // So basically lay_insert is a push back/append/LIFO operation, lay_push is a
+    // push front/prepend/FIFO operation and lay_append is an actual insertion...
 
-pub fn getRect(self: *Layout, item: Item) [4]f32 {
-    return c.lay_get_rect(&self.ctx, item.id);
-}
+    pub fn addFirst(parent: Item, item: Item) void {
+        assert(parent.ctx == item.ctx);
+        c.lay_push(parent.ctx, parent.id, item.id);
+    }
+
+    pub fn addLast(parent: Item, item: Item) void {
+        assert(parent.ctx == item.ctx);
+        c.lay_insert(parent.ctx, parent.id, item.id);
+    }
+
+    pub fn addNext(prev: Item, item: Item) void {
+        c.lay_append(prev.ctx, prev.id, item.id);
+    }
+};
