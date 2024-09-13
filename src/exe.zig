@@ -17,9 +17,10 @@ const GL = @import("exe/gl.zig");
 var gl: GL = undefined;
 
 const Api = @import("api.zig");
-const math = Api.math;
-const Vec2 = Api.Vec2;
 const Rect = Api.Rect;
+
+const math = @import("math.zig");
+const Vec2 = math.Vec2(f32);
 
 // NanoVG context & backend
 const NanoVg = Api.NanoVg;

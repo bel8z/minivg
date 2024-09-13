@@ -3,22 +3,18 @@ const std = @import("std");
 const assert = std.debug.assert;
 const fs = std.fs;
 
-pub const Api = @This();
-
 // Windows stuff
 const win32 = @import("win32.zig");
 const L = win32.L;
 
-// NanoVG
-pub const NanoVg = @import("nanovg");
-
 // Custom libs
-pub const math = @import("math.zig");
-pub const Vec2 = math.Vec2(f32);
-pub const Rect = math.AlignedBox2(f32);
+const math = @import("math.zig");
+const Vec2 = math.Vec2(f32);
 
+pub const Api = @This();
+pub const NanoVg = @import("nanovg");
 pub const App = opaque {};
-
+pub const Rect = math.AlignedBox2(f32);
 pub const Error = std.time.Timer.Error || std.mem.Allocator.Error || error{};
 
 pub const Mouse = struct {

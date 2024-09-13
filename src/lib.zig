@@ -10,10 +10,10 @@ const Api = @import("Api.zig");
 const NanoVg = Api.NanoVg;
 const Error = Api.Error;
 const Mouse = Api.Mouse;
+const Rect = Api.Rect;
 
-const math = Api.math;
-const Vec2 = Api.Vec2;
-const Rect = math.AlignedBox2(f32);
+const math = @import("math.zig");
+const Vec2 = math.Vec2(f32);
 const rect = math.rect;
 
 const PerfGraph = @import("lib/perf_graph.zig");
@@ -81,6 +81,10 @@ pub fn init(allocator: std.mem.Allocator, nvg: NanoVg) Error!*Api.App {
     self.fps = PerfGraph.init(try allocator.dupe(u8, "Frame Time"));
 
     self.layout = Layout.init();
+    const root = Layout.Item.create(&self.layout);
+    const item = Layout.Item.create(&self.layout);
+    root.addFirst(item);
+    _ = item.getRect();
 
     self.rand = std.Random.DefaultPrng.init(1234);
     try self.particles.ensureTotalCapacityPrecise(allocator, 1024);
