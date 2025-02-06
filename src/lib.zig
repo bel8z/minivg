@@ -108,6 +108,7 @@ pub fn update(
     viewport: Rect,
     cursor: Mouse,
     pixel_size: f32,
+    frame_rate: u32,
     opts: Api.Opts,
 ) f32 {
     const self: *App = @ptrCast(@alignCast(app));
@@ -134,20 +135,27 @@ pub fn update(
 
         const opt_fields = std.meta.fields(@TypeOf(opts));
         inline for (opt_fields) |field| {
-            nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
-            var adv = nvg.text(x, y, field.name);
-            adv = nvg.text(adv, y, ":");
-            nvg.textAlign(.{ .horizontal = .right, .vertical = .top });
-
             if (field.type == bool) {
-                _ = nvg.text(viewport.size.x, y, if (@field(opts, field.name)) "ON" else "OFF");
-            } else {
-                var buf: [16]u8 = undefined;
-                const txt = std.fmt.bufPrint(&buf, "{}", .{@field(opts, field.name)}) catch unreachable;
-                _ = nvg.text(viewport.size.x, y, txt);
-            }
+                nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
+                var adv = nvg.text(x, y, field.name);
+                adv = nvg.text(adv, y, ":");
+                nvg.textAlign(.{ .horizontal = .right, .vertical = .top });
 
-            y += h;
+                _ = nvg.text(viewport.size.x, y, if (@field(opts, field.name)) "ON" else "OFF");
+
+                y += h;
+            }
+        }
+
+        nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
+        _ = nvg.text(x, y, "vsync: ");
+        nvg.textAlign(.{ .horizontal = .right, .vertical = .top });
+        if (opts.vsync > 0) {
+            var buf: [16]u8 = undefined;
+            const txt = std.fmt.bufPrint(&buf, "{} ({} fps)", .{ opts.vsync, frame_rate / opts.vsync }) catch unreachable;
+            _ = nvg.text(viewport.size.x, y, txt);
+        } else {
+            _ = nvg.text(viewport.size.x, y, "OFF");
         }
     }
 
@@ -155,7 +163,7 @@ pub fn update(
     if (opts.demo) {
         demo(nvg, cursor, viewport.size, self.images[0..], self.elapsed, opts);
     } else {
-        self.subframe_simulation(nvg, cursor, viewport, dt);
+        self.subframe_simulation(nvg, cursor, viewport, frame_rate, dt);
     }
 
     // Draw FPS graph
@@ -178,10 +186,10 @@ fn subframe_simulation(
     nvg: NanoVg,
     m: Mouse,
     viewport: Rect,
+    target_fps: u32,
     real_dt: f32,
 ) void {
-    const target_fps: f32 = 60;
-    const target_dt = 1.0 / target_fps;
+    const target_dt = 1.0 / @as(f32, @floatFromInt(target_fps));
 
     const winsize = viewport.size;
     const winpos = viewport.origin;

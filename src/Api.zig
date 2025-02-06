@@ -51,6 +51,7 @@ update: *const fn (
     viewport: Rect,
     cursor: Mouse,
     pixel_size: f32,
+    frame_rate: u32,
     opts: Opts,
 ) f32,
 

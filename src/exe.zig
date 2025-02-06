@@ -148,6 +148,9 @@ pub fn main() anyerror!void {
 
     print("Loading application...Done", .{});
 
+    // Detect screen info (frame rate, etc)
+    const screen = try win32.getDisplayInfo();
+
     // Main loop
     print("Enter main loop", .{});
 
@@ -204,7 +207,7 @@ pub fn main() anyerror!void {
             var ps: win32.PAINTSTRUCT = undefined;
             const paint_dc = win32.beginPaint(win, &ps) catch unreachable;
             defer win32.endPaint(win, ps) catch unreachable;
-            updateAndRender(win, paint_dc);
+            updateAndRender(win, paint_dc, screen.frequency);
         }
     }
 }
@@ -256,7 +259,7 @@ inline fn destroy(win: win32.HWND) void {
     win32.destroyWindow(win) catch unreachable;
 }
 
-fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
+fn updateAndRender(win: win32.HWND, dc: win32.HDC, refresh_rate: u32) void {
     // DPI correction
     const dpi = if (opt.dpi) win32.GetDpiForWindow(win) else 96;
     const pixel_size = 96 / @as(f32, @floatFromInt(dpi));
@@ -296,7 +299,7 @@ fn updateAndRender(win: win32.HWND, dc: win32.HDC) void {
     }
     gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT);
 
-    _ = api.update(app, nvg, viewport, cursor, pixel_size, opt);
+    _ = api.update(app, nvg, viewport, cursor, pixel_size, refresh_rate, opt);
 
     wgl.swapBuffers(dc) catch unreachable;
 }

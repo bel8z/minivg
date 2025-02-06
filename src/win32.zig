@@ -145,6 +145,68 @@ extern "user32" fn ClientToScreen(
     point: *win32.POINT,
 ) callconv(win32.WINAPI) win32.BOOL;
 
+pub const DisplayInfo = struct {
+    width: u32,
+    height: u32,
+    bitsPerPixel: u32,
+    frequency: u32,
+    flags: u32,
+};
+
+pub fn getDisplayInfo() !DisplayInfo {
+    var devmode = std.mem.zeroInit(DEVMODEW, .{ .dmSize = @sizeOf(DEVMODEW) });
+
+    if (EnumDisplaySettingsW(null, -1, &devmode) == win32.TRUE) {
+        return DisplayInfo{
+            .width = devmode.dmPelsWidth,
+            .height = devmode.dmPelsHeight,
+            .bitsPerPixel = devmode.dmBitsPerPel,
+            .frequency = devmode.dmDisplayFrequency,
+            .flags = devmode.dmDisplayFlags,
+        };
+    }
+
+    return error.Unexpected;
+}
+
+extern "user32" fn EnumDisplaySettingsW(
+    lpszDeviceName: ?win32.LPCWSTR,
+    iModeNum: i32,
+    lpDevMode: [*c]DEVMODEW,
+) callconv(win32.WINAPI) win32.BOOL;
+
+const DEVMODEW = extern struct {
+    dmDeviceName: [32]u16,
+    dmSpecVersion: u16,
+    dmDriverVersion: u16,
+    dmSize: u16,
+    dmDriverExtra: u16,
+    dmFields: u32,
+    dmPosition: win32.POINT,
+    dmDisplayOrientation: u32,
+    dmDisplayFixedOutput: u32,
+    dmColor: c_short,
+    dmDuplex: c_short,
+    dmYResolution: c_short,
+    dmTTOption: c_short,
+    dmCollate: c_short,
+    dmFormName: [32]u16,
+    dmLogPixels: u16,
+    dmBitsPerPel: u32,
+    dmPelsWidth: u32,
+    dmPelsHeight: u32,
+    dmDisplayFlags: u32,
+    dmDisplayFrequency: u32,
+    dmICMMethod: u32,
+    dmICMIntent: u32,
+    dmMediaType: u32,
+    dmDitherType: u32,
+    dmReserved1: u32,
+    dmReserved2: u32,
+    dmPanningWidth: u32,
+    dmPanningHeight: u32,
+};
+
 // === Windows ===
 
 pub const WM_NULL = 0x0000;
