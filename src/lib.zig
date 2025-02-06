@@ -134,12 +134,19 @@ pub fn update(
 
         const opt_fields = std.meta.fields(@TypeOf(opts));
         inline for (opt_fields) |field| {
-            assert(field.type == bool);
             nvg.textAlign(.{ .horizontal = .left, .vertical = .top });
             var adv = nvg.text(x, y, field.name);
             adv = nvg.text(adv, y, ":");
             nvg.textAlign(.{ .horizontal = .right, .vertical = .top });
-            _ = nvg.text(viewport.size.x, y, if (@field(opts, field.name)) "ON" else "OFF");
+
+            if (field.type == bool) {
+                _ = nvg.text(viewport.size.x, y, if (@field(opts, field.name)) "ON" else "OFF");
+            } else {
+                var buf: [16]u8 = undefined;
+                const txt = std.fmt.bufPrint(&buf, "{}", .{@field(opts, field.name)}) catch unreachable;
+                _ = nvg.text(viewport.size.x, y, txt);
+            }
+
             y += h;
         }
     }

@@ -155,8 +155,10 @@ pub fn main() anyerror!void {
     try win32.updateWindow(win);
 
     var loop_state: enum { Idle, Update, Quit } = .Idle;
-    var vsync = !opt.steady; // Force first update
     var msg: win32.MSG = undefined;
+
+    var vsync = opt.vsync; // Force first update
+    try wgl.setSwapInterval(vsync);
 
     while (loop_state != .Quit) {
         if (loader.update(&api)) {
@@ -164,13 +166,12 @@ pub fn main() anyerror!void {
             std.log.debug("Reloaded", .{});
         }
 
-        if (vsync != opt.steady) {
-            vsync = opt.steady;
-            const interval: c_int = if (vsync) 2 else 0;
-            try wgl.setSwapInterval(interval);
+        if (vsync != opt.vsync) {
+            vsync = opt.vsync;
+            try wgl.setSwapInterval(vsync);
         }
 
-        if (vsync) {
+        if (vsync > 0) {
             loop_state = .Update;
         } else {
             try win32.waitMessage();
@@ -230,16 +231,16 @@ fn wndProc(
                 'D' => opt.dpi = !opt.dpi,
                 'A' => opt.animations = !opt.animations,
                 'R' => opt.srgb = !opt.srgb,
-                'S' => opt.steady = !opt.steady,
+                'V' => opt.vsync +%= 1,
                 'F' => opt.fps_percent = !opt.fps_percent,
                 'M' => opt.demo = !opt.demo,
                 else => {},
             }
 
-            if (!opt.steady) _ = win32.invalidateRect(win, null, true);
+            if (opt.vsync == 0) _ = win32.invalidateRect(win, null, true);
         },
         win32.WM_MOUSEMOVE => {
-            if (!opt.steady) _ = win32.invalidateRect(win, null, true);
+            if (opt.vsync == 0) _ = win32.invalidateRect(win, null, true);
         },
         win32.WM_PAINT => {
             // NOTE (Matteo): Just marking the event has being handled, see

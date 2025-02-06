@@ -39,7 +39,7 @@ pub const Opts = packed struct {
     animations: bool = false,
     demo: bool = false,
     srgb: bool = false,
-    steady: bool = true,
+    vsync: u2 = 1,
     fps_percent: bool = false,
 };
 
