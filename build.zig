@@ -21,9 +21,9 @@ pub fn build(b: *std.Build) void {
     const nvg_path = "deps/nanovg";
     const nvg = b.addModule(
         "nanovg",
-        .{ .root_source_file = .{ .path = nvg_path ++ "/src/nanovg.zig" } },
+        .{ .root_source_file = b.path(nvg_path ++ "/src/nanovg.zig") },
     );
-    nvg.addIncludePath(.{ .path = nvg_path ++ "/src" });
+    nvg.addIncludePath(b.path(nvg_path ++ "/src"));
 
     const lib = b.addStaticLibrary(.{
         .name = "lib",
@@ -34,13 +34,13 @@ pub fn build(b: *std.Build) void {
     const c_flags = .{};
 
     lib.linkLibC();
-    lib.addIncludePath(.{ .path = nvg_path ++ "/src" });
-    lib.addIncludePath(.{ .path = "deps" });
-    lib.installHeader(.{ .path = nvg_path ++ "/src/fontstash.h" }, "fontstash.h");
-    lib.installHeader(.{ .path = nvg_path ++ "/src/stb_image.h" }, "stb_image.h");
-    lib.installHeader(.{ .path = nvg_path ++ "/src/stb_truetype.h" }, "stb_truetype.h");
-    lib.installHeader(.{ .path = "deps/layout.h" }, "layout.h");
-    lib.addCSourceFile(.{ .file = .{ .path = "src/c/deps.c" }, .flags = &c_flags });
+    lib.addIncludePath(b.path(nvg_path ++ "/src"));
+    lib.addIncludePath(b.path("deps"));
+    lib.installHeader(b.path(nvg_path ++ "/src/fontstash.h"), "fontstash.h");
+    lib.installHeader(b.path(nvg_path ++ "/src/stb_image.h"), "stb_image.h");
+    lib.installHeader(b.path(nvg_path ++ "/src/stb_truetype.h"), "stb_truetype.h");
+    lib.installHeader(b.path("deps/layout.h"), "layout.h");
+    lib.addCSourceFile(.{ .file = b.path("src/c/deps.c"), .flags = &c_flags });
 
     // Application shared library
     const app_name = if (optimize == .Debug)
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
         .name = app_name,
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -66,7 +66,7 @@ pub fn build(b: *std.Build) void {
         .name = "minivg",
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/exe.zig" },
+        .root_source_file = b.path("src/exe.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -105,7 +105,7 @@ pub fn build(b: *std.Build) void {
 
     // Creates a step for unit testing.
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/test.zig" },
+        .root_source_file = b.path("src/test.zig"),
         .target = target,
         .optimize = optimize,
     });

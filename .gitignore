@@ -1,6 +1,8 @@
 /build
 /zig-out
 /zig-cache
+/.zig-out
+/.zig-cache
 
 
 *.sublime-workspace

@@ -1,1 +1,0 @@
-zig build %* --prefix "./build/" --prefix-lib-dir "." --prefix-exe-dir "." --cache-dir "./build/cache"

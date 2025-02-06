@@ -67,10 +67,8 @@ pub const Loader = struct {
     const alloc = fba.allocator();
 
     pub fn init(api_: *Api) !Loader {
-        const exe_dir = try fs.selfExeDirPathAlloc(alloc);
-        const root = fs.path.dirname(exe_dir) orelse exe_dir;
-        const lib_path = try fs.path.join(alloc, &.{ root, "lib", "app.dll" });
-        const lib_dir = fs.path.dirname(lib_path) orelse unreachable;
+        const lib_dir = try fs.selfExeDirPathAlloc(alloc);
+        const lib_path = try fs.path.join(alloc, &.{ lib_dir, "app.dll" });
 
         var self = Loader{
             .dir_path = lib_dir,
