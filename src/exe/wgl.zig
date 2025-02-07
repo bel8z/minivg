@@ -53,37 +53,33 @@ const PFD_DEPTH_DONTCARE = 0x20000000;
 const PFD_DOUBLEBUFFER_DONTCARE = 0x40000000;
 const PFD_STEREO_DONTCARE = 0x80000000;
 
-const DWORD = win32.DWORD;
-const WORD = win32.WORD;
-const BYTE = win32.BYTE;
-
 const PIXELFORMATDESCRIPTOR = extern struct {
-    nSize: WORD = @sizeOf(PIXELFORMATDESCRIPTOR),
-    nVersion: WORD,
-    dwFlags: DWORD,
-    iPixelType: BYTE,
-    cColorBits: BYTE,
-    cRedBits: BYTE,
-    cRedShift: BYTE,
-    cGreenBits: BYTE,
-    cGreenShift: BYTE,
-    cBlueBits: BYTE,
-    cBlueShift: BYTE,
-    cAlphaBits: BYTE,
-    cAlphaShift: BYTE,
-    cAccumBits: BYTE,
-    cAccumRedBits: BYTE,
-    cAccumGreenBits: BYTE,
-    cAccumBlueBits: BYTE,
-    cAccumAlphaBits: BYTE,
-    cDepthBits: BYTE,
-    cStencilBits: BYTE,
-    cAuxBuffers: BYTE,
-    iLayerType: BYTE,
-    bReserved: BYTE,
-    dwLayerMask: DWORD,
-    dwVisibleMask: DWORD,
-    dwDamageMask: DWORD,
+    nSize: u16 = @sizeOf(PIXELFORMATDESCRIPTOR),
+    nVersion: u16,
+    dwFlags: u32,
+    iPixelType: u8,
+    cColorBits: u8,
+    cRedBits: u8,
+    cRedShift: u8,
+    cGreenBits: u8,
+    cGreenShift: u8,
+    cBlueBits: u8,
+    cBlueShift: u8,
+    cAlphaBits: u8,
+    cAlphaShift: u8,
+    cAccumBits: u8,
+    cAccumRedBits: u8,
+    cAccumGreenBits: u8,
+    cAccumBlueBits: u8,
+    cAccumAlphaBits: u8,
+    cDepthBits: u8,
+    cStencilBits: u8,
+    cAuxBuffers: u8,
+    iLayerType: u8,
+    bReserved: u8,
+    dwLayerMask: u32,
+    dwVisibleMask: u32,
+    dwDamageMask: u32,
 };
 
 extern "gdi32" fn ChoosePixelFormat(
